@@ -1,0 +1,256 @@
+/* ═══════════════════════════════════════════════════════════════
+   AdminLayout.css – Layout Admin (Sidebar + Main Content)
+   ═══════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+/* ── Biến màu Admin ────────────────────────────────────────── */
+:root {
+  --admin-sidebar-bg:    #0f172a;
+  --admin-sidebar-w:     260px;
+  --admin-accent:        #6366f1;
+  --admin-accent-light:  #818cf8;
+  --admin-text:          #e2e8f0;
+  --admin-text-muted:    #94a3b8;
+  --admin-border:        #1e293b;
+  --admin-hover:         #1e293b;
+  --admin-active-bg:     #1e293b;
+  --admin-main-bg:       #f1f5f9;
+  --admin-card-bg:       #ffffff;
+}
+
+/* ── Layout tổng thể ───────────────────────────────────────── */
+.admin-layout {
+  display: flex;
+  min-height: 100vh;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   SIDEBAR
+   ═══════════════════════════════════════════════════════════════ */
+.admin-sidebar {
+  width: var(--admin-sidebar-w);
+  min-height: 100vh;
+  background: var(--admin-sidebar-bg);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 100;
+  overflow-y: auto;
+}
+
+/* ── Header Sidebar ────────────────────────────────────────── */
+.admin-sidebar-header {
+  padding: 1.5rem 1.25rem;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-sidebar-logo-icon {
+  font-size: 1.75rem;
+  line-height: 1;
+}
+
+.admin-sidebar-logo-name {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.admin-sidebar-logo-sub {
+  font-size: 0.7rem;
+  color: var(--admin-text-muted);
+  font-weight: 400;
+  margin-top: 0.1rem;
+}
+
+/* ── Nav Links ─────────────────────────────────────────────── */
+.admin-sidebar-nav {
+  flex: 1;
+  padding: 1.25rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.admin-sidebar-section-label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--admin-text-muted);
+  letter-spacing: 0.1em;
+  padding: 0 0.5rem;
+  margin-bottom: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.admin-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.875rem;
+  border-radius: 0.5rem;
+  color: var(--admin-text-muted);
+  text-decoration: none;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.18s ease;
+}
+
+.admin-sidebar-link:hover {
+  background: var(--admin-hover);
+  color: var(--admin-text);
+}
+
+.admin-sidebar-link.active {
+  background: var(--admin-accent);
+  color: #fff;
+}
+
+.admin-sidebar-link-icon {
+  font-size: 1.05rem;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* ── Footer Sidebar ────────────────────────────────────────── */
+.admin-sidebar-footer {
+  padding: 1rem 0.75rem;
+  border-top: 1px solid var(--admin-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.5rem;
+}
+
+.admin-sidebar-user-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--admin-accent);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.admin-sidebar-user-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.admin-sidebar-user-name {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--admin-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.admin-sidebar-user-role {
+  font-size: 0.7rem;
+  color: var(--admin-text-muted);
+  margin-top: 0.1rem;
+}
+
+.admin-sidebar-back-btn {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: 1px solid var(--admin-border);
+  border-radius: 0.4rem;
+  color: var(--admin-text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.18s ease;
+}
+
+.admin-sidebar-back-btn:hover {
+  background: var(--admin-hover);
+  color: var(--admin-text);
+  border-color: var(--admin-text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MAIN CONTENT
+   ═══════════════════════════════════════════════════════════════ */
+.admin-main {
+  flex: 1;
+  margin-left: var(--admin-sidebar-w);
+  background: var(--admin-main-bg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-main-header {
+  background: var(--admin-card-bg);
+  border-bottom: 1px solid #e2e8f0;
+  padding: 1.25rem 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.admin-main-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.admin-main-body {
+  padding: 2rem;
+  flex: 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   Responsive (ẩn sidebar trên mobile thay bằng top bar)
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 768px) {
+  .admin-sidebar {
+    width: 100%;
+    height: auto;
+    min-height: unset;
+    position: static;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .admin-sidebar-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    padding: 0.5rem;
+  }
+
+  .admin-sidebar-footer {
+    display: none;
+  }
+
+  .admin-main {
+    margin-left: 0;
+  }
+}
