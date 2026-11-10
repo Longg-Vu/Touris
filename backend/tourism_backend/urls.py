@@ -15,6 +15,7 @@ urlpatterns = [
     path('api/tours/', include('tours.urls')),          # ← tours app
     path('api/bookings/', include('bookings.urls')),    # ← bookings app
     path('api/reviews/', include('reviews.urls')),      # ← reviews app
+    path('api/chat/', include('chat.urls')),            # ← chat app (Mini Live Chat & Trợ lý ảo)
 ]
 
 # Serve media files in development

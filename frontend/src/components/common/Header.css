@@ -27,6 +27,7 @@
 
 .header-nav {
   display: flex;
+  align-items: center;
   gap: 1.5rem;
 }
 
@@ -36,9 +37,44 @@
   font-weight: 500;
   font-size: 14px;
   transition: color 0.2s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  position: relative;
 }
 
-.header-nav a:hover { color: #0ea5e9; }
+.header-nav a:hover,
+.header-nav a.active {
+  color: #0ea5e9;
+}
+
+.header-nav a.active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -6px;
+  height: 2px;
+  border-radius: 2px;
+  background: #0ea5e9;
+}
+
+/* Badge số lượng tour yêu thích - nhỏ gọn, tinh tế cạnh chữ */
+.header-fav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+  background: #ef4444;
+  border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.4);
+}
 
 .header-actions {
   display: flex;

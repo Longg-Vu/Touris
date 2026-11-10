@@ -15,13 +15,14 @@ Kết quả cuối cùng:
 
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import TourViewSet, DestinationViewSet, CategoryViewSet, AdminTourViewSet
+from .views import TourViewSet, DestinationViewSet, CategoryViewSet, AdminTourViewSet, FavoriteViewSet
 
-# ── Public router (Guest xem được) ────────────────────────
+# ── Public & Customer router ──────────────────────────────
 router = DefaultRouter()
 router.register(r'tours',        TourViewSet,        basename='tour')
 router.register(r'destinations', DestinationViewSet, basename='destination')
 router.register(r'categories',   CategoryViewSet,    basename='category')
+router.register(r'favorites',    FavoriteViewSet,    basename='favorite')
 
 # ── Admin router (Admin/Staff quản lý) ────────────────────
 admin_router = DefaultRouter()

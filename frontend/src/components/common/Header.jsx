@@ -1,10 +1,12 @@
 import { useState, useRef, useEffect } from 'react';
 import './Header.css';
-import { Link } from 'react-router-dom';
+import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
+import { useFavorites } from '../../context/FavoritesContext';
 
 function Header() {
-  const { user, isAuthenticated, logout, isAdmin, isStaff, openAuthModal } = useAuth();
+  const { user, isAuthenticated, logout, isAdmin, isStaff, canAccessAdmin, openAuthModal } = useAuth();
+  const { favoritesCount } = useFavorites();
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -32,8 +34,17 @@ function Header() {
         </Link>
 
         <nav className="header-nav">
-          <Link to="/">Trang chủ</Link>
-          <Link to="/tours">Tour du lịch</Link>
+          <NavLink to="/" end>Trang chủ</NavLink>
+          <NavLink to="/tours">Tour du lịch</NavLink>
+          <NavLink to="/destinations">Điểm đến</NavLink>
+          <NavLink to="/favorites" className="header-nav-fav" title="Xem danh sách tour yêu thích">
+            <span>Yêu thích</span>
+            {favoritesCount > 0 && (
+              <span className="header-fav-badge" id="header-fav-badge">{favoritesCount}</span>
+            )}
+          </NavLink>
+          <NavLink to="/about">Về chúng tôi</NavLink>
+          <NavLink to="/contact">Liên hệ</NavLink>
         </nav>
 
         <div className="header-actions">
@@ -52,16 +63,16 @@ function Header() {
                 <span className="header-chevron">{dropdownOpen ? '▲' : '▼'}</span>
               </button>
 
-              {dropdownOpen && (
+              {dropdownOpen && ( 
                 <div className="header-dropdown">
                   <div className="header-dropdown-user">
                     <div className="header-dropdown-name">{displayName}</div>
                     <div className="header-dropdown-email">{user?.email}</div>
                   </div>
                   <div className="header-dropdown-divider" />
-                  {isAdmin && (
+                  {canAccessAdmin && (
                     <Link to="/admin" className="header-dropdown-item" onClick={() => setDropdownOpen(false)}>
-                      ⚙️ Quản trị hệ thống
+                      {isAdmin ? '⚙️ Quản trị hệ thống' : '🎒 Quản lý tour (HDV)'}
                     </Link>
                   )}
                   <Link to="/profile" className="header-dropdown-item" onClick={() => setDropdownOpen(false)}>
@@ -69,6 +80,9 @@ function Header() {
                   </Link>
                   <Link to="/my-bookings" className="header-dropdown-item" onClick={() => setDropdownOpen(false)}>
                     🎫 Đơn đặt của tôi
+                  </Link>
+                  <Link to="/favorites" className="header-dropdown-item" onClick={() => setDropdownOpen(false)}>
+                    ❤️ Tour yêu thích ({favoritesCount})
                   </Link>
                   <div className="header-dropdown-divider" />
                   <button

@@ -1,0 +1,96 @@
+.not-found-page {
+  min-height: 75vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1.5rem;
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+}
+
+.not-found-card {
+  max-width: 580px;
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 24px;
+  padding: 3rem 2.2rem;
+  text-align: center;
+  box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+}
+
+.not-found-badge {
+  display: inline-block;
+  background: rgba(233, 69, 96, 0.1);
+  color: #e94560;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 5px 14px;
+  border-radius: 999px;
+  margin-bottom: 0.75rem;
+}
+
+.not-found-code {
+  font-size: 5.2rem;
+  font-weight: 900;
+  line-height: 1;
+  background: linear-gradient(135deg, #e94560 0%, #1e293b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 0.75rem;
+}
+
+.not-found-card h1 {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #0f172a;
+  margin: 0 0 0.75rem;
+}
+
+.not-found-card p {
+  color: #64748b;
+  font-size: 0.96rem;
+  line-height: 1.6;
+  margin: 0 0 1.85rem;
+}
+
+.not-found-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.btn-nf-primary {
+  background: #e94560;
+  color: #ffffff;
+  text-decoration: none;
+  padding: 0.75rem 1.4rem;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.95rem;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.btn-nf-primary:hover {
+  background: #d63447;
+  transform: translateY(-2px);
+}
+
+.btn-nf-secondary {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #1e293b;
+  text-decoration: none;
+  padding: 0.75rem 1.3rem;
+  border-radius: 10px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  transition: border-color 0.2s, color 0.2s;
+}
+
+.btn-nf-secondary:hover {
+  border-color: #e94560;
+  color: #e94560;
+}
+

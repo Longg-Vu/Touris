@@ -361,3 +361,850 @@
 .atm-confirm h3   { font-size: 1.1rem; font-weight: 700; color: #0f172a; margin: 0 0 0.5rem; }
 .atm-confirm p    { font-size: 0.875rem; color: #64748b; margin: 0 0 1.5rem; line-height: 1.6; }
 .atm-confirm-btns { display: flex; gap: 0.75rem; justify-content: center; }
+
+/* ── Dynamic Highlights & Itinerary Editors ───────────────── */
+.atm-dynamic-section {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.atm-dynamic-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.atm-dynamic-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+.atm-btn-add-mini {
+  background: #eef2ff;
+  color: #4f46e5;
+  border: 1px solid #c7d2fe;
+  border-radius: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.atm-btn-add-mini:hover {
+  background: #4f46e5;
+  color: #fff;
+}
+.atm-dynamic-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+.atm-dynamic-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.atm-input-icon {
+  width: 55px !important;
+  text-align: center;
+  font-size: 1.1rem !important;
+  padding: 0.4rem !important;
+}
+.atm-input-time {
+  width: 140px !important;
+  font-size: 0.82rem !important;
+  padding: 0.5rem 0.6rem !important;
+}
+.atm-input-desc {
+  flex: 1;
+  font-size: 0.85rem !important;
+  padding: 0.5rem 0.6rem !important;
+}
+.atm-btn-remove-row {
+  background: #fee2e2;
+  color: #ef4444;
+  border: none;
+  border-radius: 0.35rem;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.atm-btn-remove-row:hover {
+  background: #ef4444;
+  color: #fff;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   HDV - PHÂN CHIA "TOUR CỦA TÔI" & TIẾN ĐỘ ĐOÀN
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── HDV Quick Stats Widgets ────────────────────────────── */
+.atp-guide-widgets {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.atp-widget-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.atp-widget-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.atp-widget-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.atp-widget-icon.blue   { background: #eff6ff; color: #1d4ed8; }
+.atp-widget-icon.purple { background: #f5f3ff; color: #6d28d9; }
+.atp-widget-icon.amber  { background: #fffbeb; color: #b45309; }
+.atp-widget-icon.green  { background: #ecfdf5; color: #047857; }
+
+.atp-widget-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.atp-widget-val {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #0f172a;
+  line-height: 1.2;
+}
+
+.atp-widget-label {
+  font-size: 0.8rem;
+  color: #64748b;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* ── Time Filter Tabs (HDV) ────────────────────────────── */
+.atp-time-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.atp-time-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.atp-time-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.55rem 0.95rem;
+  border: 1px solid transparent;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.atp-time-tab:hover {
+  background: #f1f5f9;
+  color: #1e293b;
+}
+
+.atp-time-tab.active {
+  background: #4f46e5;
+  color: #fff;
+}
+
+.atp-tab-badge {
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  transition: all 0.15s;
+}
+
+.atp-time-tab.active .atp-tab-badge {
+  background: rgba(255, 255, 255, 0.25);
+  color: #fff;
+}
+
+/* ── Cột Tiến độ đoàn trong bảng ───────────────────────── */
+.atp-progress-cell {
+  min-width: 165px;
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: 6px;
+  transition: background 0.15s;
+}
+
+.atp-progress-cell:hover {
+  background: #f8fafc;
+}
+
+.atp-progress-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.atp-progress-count {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.atp-progress-percent {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.atp-progress-track {
+  width: 100%;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+
+.atp-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+.atp-progress-fill.shortage {
+  background: linear-gradient(90deg, #f59e0b, #d97706);
+}
+
+.atp-progress-fill.ready {
+  background: linear-gradient(90deg, #10b981, #059669);
+}
+
+.atp-shortage-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #b45309;
+  border: 1px solid #fde68a;
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.atp-ready-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: #d1fae5;
+  color: #065f46;
+  border: 1px solid #a7f3d0;
+  padding: 1px 6px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+.atp-btn-manifest {
+  background: #e0e7ff;
+  color: #4338ca;
+  border: 1px solid #c7d2fe;
+}
+
+.atp-btn-manifest:hover {
+  background: #c7d2fe;
+}
+
+/* ── Modal Tiến độ đoàn & Danh sách khách ───────────────── */
+.atm-manifest-modal {
+  max-width: 800px !important;
+}
+
+.atm-manifest-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.atm-manifest-stat {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.atm-manifest-stat-val {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.atm-manifest-stat-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.atm-alert-box {
+  border-radius: 10px;
+  padding: 14px 18px;
+  margin-bottom: 1.25rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.atm-alert-box.shortage {
+  background: #fffbeb;
+  border: 1.5px solid #fde68a;
+}
+
+.atm-alert-box.ready {
+  background: #ecfdf5;
+  border: 1.5px solid #a7f3d0;
+}
+
+.atm-alert-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.atm-alert-content {
+  flex: 1;
+}
+
+.atm-alert-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+
+.atm-alert-box.shortage .atm-alert-title { color: #92400e; }
+.atm-alert-box.ready .atm-alert-title    { color: #065f46; }
+
+.atm-alert-desc {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.atm-btn-copy-sale {
+  margin-top: 10px;
+  background: #f59e0b;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.15s;
+}
+
+.atm-btn-copy-sale:hover {
+  background: #d97706;
+}
+
+.atm-manifest-table-wrap {
+  overflow-x: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  margin-top: 0.5rem;
+}
+
+.atm-manifest-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.atm-manifest-table th {
+  background: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1.5px solid #cbd5e1;
+}
+
+.atm-manifest-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #1e293b;
+}
+
+.atm-phone-link {
+  color: #0284c7;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.atm-phone-link:hover {
+  text-decoration: underline;
+}
+
+/* ── Nhóm hành động Cảnh báo Sale trong Manifest Modal ─────── */
+.atm-alert-actions-group {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.atm-alert-sent-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Nút báo Sale chính khi chưa gửi */
+.atm-btn-alert-sale {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(239, 68, 68, 0.35);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.atm-btn-alert-sale:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(239, 68, 68, 0.45);
+}
+
+.atm-btn-alert-sale:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+/* Nút trạng thái đã gửi cảnh báo (không bấm trùng) */
+.atm-btn-alert-success {
+  background: #ecfdf5;
+  color: #047857;
+  border: 1.5px solid #a7f3d0;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+/* Nút gửi nhắc lại */
+.atm-btn-resend-alert {
+  background: #f8fafc;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.atm-btn-resend-alert:hover:not(:disabled) {
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: #94a3b8;
+}
+
+/* Nút copy tin nhắn Zalo/Telegram phụ */
+.atm-btn-copy-sale {
+  background: #f1f5f9;
+  color: #334155;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 7px 13px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all 0.15s ease;
+}
+
+.atm-btn-copy-sale:hover {
+  background: #e2e8f0;
+  color: #0f172a;
+}
+
+/* ── Pill cảnh báo trên bảng Tour ─────────────────────────── */
+.atp-tour-name-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.atp-priority-sale-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #fef2f2;
+  color: #dc2626;
+  border: 1px solid #fecaca;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  width: fit-content;
+  letter-spacing: 0.01em;
+  animation: pill-pulse 2.5s infinite ease-in-out;
+}
+
+@keyframes pill-pulse {
+  0% { box-shadow: 0 0 0 rgba(220, 38, 38, 0); }
+  50% { box-shadow: 0 0 6px rgba(220, 38, 38, 0.35); }
+  100% { box-shadow: 0 0 0 rgba(220, 38, 38, 0); }
+}
+
+/* Nút cờ 🚨 trong cột Cờ */
+.atp-flag-btn.atp-flag-priority-sale {
+  opacity: 1 !important;
+  background: #fee2e2;
+  border-radius: 6px;
+  border: 1px solid #fca5a5;
+  cursor: pointer;
+  animation: flag-bounce 2s infinite ease-in-out;
+}
+
+.atp-flag-btn.atp-flag-priority-off {
+  opacity: 0.28;
+  filter: grayscale(0.8);
+  transition: all 0.2s ease;
+}
+
+.atp-flag-btn.atp-flag-priority-off:hover {
+  opacity: 0.9;
+  filter: grayscale(0);
+  background: #fee2e2;
+  border-radius: 6px;
+}
+
+@keyframes flag-bounce {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.18); }
+}
+
+/* ── Tab Cần đẩy Sale gấp trên thanh Tabs ──────────────────── */
+.atp-time-tab.priority-tab {
+  border-color: #fed7aa;
+}
+
+.atp-time-tab.priority-tab:hover {
+  border-color: #f97316;
+  color: #ea580c;
+}
+
+.atp-time-tab.priority-tab.active {
+  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+  color: #ffffff;
+  border-color: transparent;
+}
+
+.atp-tab-badge.red {
+  background: #fee2e2;
+  color: #dc2626;
+  font-weight: 800;
+}
+
+.atp-time-tab.priority-tab.active .atp-tab-badge.red {
+  background: #ffffff;
+  color: #c2410c;
+}
+
+/* Nút gỡ cờ Sale trong Modal */
+.atm-btn-clear-alert {
+  color: #ef4444 !important;
+  border-color: #fca5a5 !important;
+  background: #fff5f5 !important;
+}
+
+.atm-btn-clear-alert:hover:not(:disabled) {
+  background: #fee2e2 !important;
+  color: #b91c1c !important;
+  border-color: #ef4444 !important;
+}
+
+/* ── Admin Flash Sale Tool in Manifest Modal ─────────────── */
+.atm-admin-sale-tool {
+  background: linear-gradient(135deg, #fff7ed 0%, #fef2f2 100%);
+  border: 1.5px solid #fed7aa;
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+
+.atm-admin-sale-header {
+  margin-bottom: 10px;
+}
+
+.atm-admin-sale-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #c2410c;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.atm-admin-sale-desc {
+  font-size: 0.8rem;
+  color: #475569;
+  margin-top: 2px;
+  line-height: 1.4;
+}
+
+.atm-admin-hdv-note {
+  background: #fef3c7;
+  border: 1px solid #fde68a;
+  color: #b45309;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  margin-bottom: 10px;
+}
+
+.atm-sale-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.atm-sale-percent-selector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.atm-sale-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.atm-sale-preset-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.atm-sale-preset-btn {
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #475569;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.atm-sale-preset-btn:hover {
+  border-color: #f97316;
+  color: #ea580c;
+}
+
+.atm-sale-preset-btn.active {
+  background: #ea580c;
+  color: #ffffff;
+  border-color: #ea580c;
+  box-shadow: 0 2px 6px rgba(234, 88, 12, 0.35);
+}
+
+.atm-sale-custom-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #ffffff;
+  border: 1.5px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 2px 6px;
+}
+
+.atm-sale-custom-input input {
+  border: none;
+  outline: none;
+  width: 44px;
+  font-weight: 700;
+  color: #ea580c;
+  text-align: center;
+  font-size: 0.82rem;
+}
+
+.atm-sale-custom-input span {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #64748b;
+}
+
+.atm-sale-price-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #ffffff;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  flex-wrap: wrap;
+}
+
+.atm-spp-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.atm-spp-item del {
+  color: #94a3b8;
+}
+
+.atm-spp-arrow {
+  color: #ea580c;
+  font-weight: 700;
+}
+
+.atm-sale-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.atm-sale-active-group,
+.atm-sale-inactive-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.atm-sale-status-badge {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #dc2626;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 6px 12px;
+  border-radius: 8px;
+  letter-spacing: 0.01em;
+}
+
+.atm-btn-activate-sale {
+  background: linear-gradient(135deg, #ea580c 0%, #c2410c 100%);
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(234, 88, 12, 0.35);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.atm-btn-activate-sale:hover:not(:disabled) {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 10px rgba(234, 88, 12, 0.45);
+}
+
+.atm-btn-activate-sale:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.atm-btn-deactivate-sale {
+  background: #ffffff;
+  border: 1.5px solid #fca5a5;
+  color: #dc2626;
+  border-radius: 8px;
+  padding: 7px 14px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.atm-btn-deactivate-sale:hover:not(:disabled) {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #ef4444;
+}
+
+.atm-btn-deactivate-sale:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+

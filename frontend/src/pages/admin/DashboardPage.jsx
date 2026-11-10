@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   AreaChart, Area,
   BarChart, Bar,
@@ -75,6 +76,7 @@ function StatCard({ icon, label, value, sub, color, trend }) {
 
 /* ─── Main Component ────────────────────────────────────── */
 function DashboardPage() {
+  const navigate              = useNavigate();
   const [stats, setStats]     = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
@@ -121,35 +123,131 @@ function DashboardPage() {
 
       {stats && !loading && (
         <>
+          {stats.is_scoped && (
+            <div style={{
+              background: 'rgba(99, 102, 241, 0.1)',
+              border: '1px solid rgba(99, 102, 241, 0.3)',
+              color: '#818cf8',
+              padding: '10px 16px',
+              borderRadius: '10px',
+              marginBottom: '20px',
+              fontSize: '0.9rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}>
+              <span>ℹ️</span>
+              <span>Chế độ Hướng dẫn viên: Số liệu doanh thu, đơn đặt và biểu đồ bên dưới được tính riêng cho các tour do bạn phụ trách.</span>
+            </div>
+          )}
+
           {/* ── Stat Cards ─────────────────────────────── */}
           <div className="db-stats-grid">
             <StatCard
               icon="📋"
-              label="Tổng đơn đặt"
+              label={stats.is_scoped ? "Đơn tour của tôi" : "Tổng đơn đặt"}
               value={stats.overview.total_bookings.toLocaleString('vi-VN')}
               sub={`+${stats.overview.bookings_this_month} đơn tháng này`}
               color="#6366f1"
             />
             <StatCard
               icon="💰"
-              label="Tổng doanh thu"
+              label={stats.is_scoped ? "Doanh thu tour dẫn" : "Tổng doanh thu"}
               value={`${fmtVND(stats.overview.total_revenue)} ₫`}
               sub={`Tháng này: ${fmtVND(stats.overview.revenue_this_month)} ₫`}
               color="#10b981"
             />
             <StatCard
               icon="🗺️"
-              label="Tour đang mở"
+              label={stats.is_scoped ? "Tour phụ trách" : "Tour đang mở"}
               value={stats.overview.total_tours.toLocaleString('vi-VN')}
               color="#f59e0b"
             />
             <StatCard
               icon="👥"
-              label="Khách hàng"
+              label={stats.is_scoped ? "Khách đi tour của tôi" : "Khách hàng"}
               value={stats.overview.total_customers.toLocaleString('vi-VN')}
               color="#ec4899"
             />
           </div>
+
+          {/* ── Cảnh báo ưu tiên: Tour cần đẩy Sale gấp (Cảnh báo từ HDV) ── */}
+          {stats.priority_sale_tours && stats.priority_sale_tours.length > 0 && (
+            <div className="db-priority-section">
+              <div className="db-priority-header">
+                <div className="db-priority-title-wrap">
+                  <div className="db-priority-badge-pulse">🚨 CẢNH BÁO TỪ HƯỚNG DẪN VIÊN</div>
+                  <h2 className="db-priority-title">
+                    Các đoàn tour cần đẩy Sale gấp ({stats.priority_sale_tours.length})
+                  </h2>
+                  <p className="db-priority-sub">
+                    Đoàn đang thiếu khách so với chỉ tiêu khởi hành. Đề nghị phòng Sale và Quản lý hỗ trợ đẩy mạnh tư vấn chốt khách.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="db-priority-btn-all"
+                  onClick={() => navigate('/admin/tours')}
+                >
+                  Quản lý tour & đoàn →
+                </button>
+              </div>
+
+              <div className="db-priority-grid">
+                {stats.priority_sale_tours.map((t) => (
+                  <div key={t.id} className="db-priority-card">
+                    <div className="db-priority-card-top">
+                      <img
+                        src={t.thumbnail}
+                        alt={t.name}
+                        className="db-priority-thumb"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                      <div className="db-priority-card-main">
+                        <div className="db-priority-card-name" title={t.name}>
+                          #{t.id} · {t.name}
+                        </div>
+                        <div className="db-priority-card-guide">
+                          👨‍✈️ HDV: <strong>{t.guide_name || 'Chưa gán'}</strong>
+                        </div>
+                        {t.last_sale_alert_display && (
+                          <div className="db-priority-card-time">
+                            🕒 Báo Sale: <strong>{t.last_sale_alert_display}</strong>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="db-priority-card-progress">
+                      <div className="db-priority-progress-labels">
+                        <span>Tiến độ khách:</span>
+                        <strong>{t.current_booked_guests} / {t.target_participants} khách ({t.fill_rate}%)</strong>
+                      </div>
+                      <div className="db-priority-progress-bar">
+                        <div
+                          className="db-priority-progress-fill"
+                          style={{ width: `${t.fill_rate}%` }}
+                        />
+                      </div>
+                      <div className="db-priority-shortage-alert">
+                        ⚠️ Còn thiếu: <strong>{t.remaining_needed} khách</strong> để đạt chỉ tiêu đoàn!
+                      </div>
+                    </div>
+
+                    <div className="db-priority-card-actions">
+                      <button
+                        type="button"
+                        className="db-priority-action-btn"
+                        onClick={() => navigate(`/admin/tours?manifest=${t.id}&search=${encodeURIComponent(t.name)}&time_filter=all`)}
+                      >
+                        📋 Xem danh sách đoàn & hỗ trợ →
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── Charts Row ─────────────────────────────── */}
           <div className="db-charts-row">
@@ -157,7 +255,9 @@ function DashboardPage() {
             <div className="db-chart-card db-chart-large">
               <div className="db-chart-header">
                 <h3>📈 Doanh thu theo tháng</h3>
-                <span className="db-chart-sub">12 tháng gần nhất</span>
+                <span className="db-chart-sub">
+                  {stats.is_scoped ? "Tour do bạn phụ trách dẫn" : "12 tháng gần nhất"}
+                </span>
               </div>
               {stats.monthly_revenue.length > 0 ? (
                 <ResponsiveContainer width="100%" height={280}>

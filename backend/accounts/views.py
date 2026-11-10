@@ -8,13 +8,18 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
+from .permissions import IsSuperUser, IsStaffOrSuperUser
 from .serializers import (
     RegisterSerializer, UserSerializer, GoogleAuthSerializer, ChangePasswordSerializer,
-    AdminUserListSerializer, AdminUserCreateSerializer, AdminUserUpdateSerializer, AdminResetUserPasswordSerializer
+    AdminUserListSerializer, AdminUserCreateSerializer, AdminUserUpdateSerializer,
+    AdminResetUserPasswordSerializer, GuideSerializer,
 )
+from django.core.mail import EmailMultiAlternatives
+from django.conf import settings
 import os
 
 User = get_user_model()
+
 
 
 def get_tokens_for_user(user):
@@ -73,7 +78,9 @@ class GoogleLoginView(APIView):
         credential = serializer.validated_data['credential']
 
         try:
+            # pyrefly: ignore [missing-import]
             from google.oauth2 import id_token
+            # pyrefly: ignore [missing-import]
             from google.auth.transport import requests as g_requests
 
             CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
@@ -158,19 +165,9 @@ class AdminUserPagination(PageNumberPagination):
 class AdminUserViewSet(viewsets.ModelViewSet):
     """
     ViewSet quản trị người dùng (User Management).
-    Chỉ tài khoản staff hoặc superuser mới có quyền truy cập.
-
-    Endpoints:
-      GET    /api/auth/admin/users/             → Danh sách người dùng (phân trang, search, filter)
-      POST   /api/auth/admin/users/             → Tạo tài khoản mới (nhân viên, khách hàng, admin)
-      GET    /api/auth/admin/users/{id}/        → Chi tiết người dùng
-      PATCH  /api/auth/admin/users/{id}/        → Cập nhật thông tin / vai trò / trạng thái
-      DELETE /api/auth/admin/users/{id}/        → Xoá người dùng (không được xoá chính mình)
-      POST   /api/auth/admin/users/{id}/toggle-active/ → Khoá / mở khoá tài khoản
-      POST   /api/auth/admin/users/{id}/reset-password/ → Đặt lại mật khẩu
-      GET    /api/auth/admin/users/stats/       → Thống kê tổng số user theo vai trò
+    Chỉ Quản trị viên (is_superuser) mới có quyền quản lý tài khoản.
     """
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsSuperUser]
     pagination_class   = AdminUserPagination
     filter_backends    = [filters.SearchFilter, filters.OrderingFilter]
     search_fields      = ['username', 'email', 'first_name', 'last_name', 'phone']
@@ -184,6 +181,8 @@ class AdminUserViewSet(viewsets.ModelViewSet):
             return AdminUserUpdateSerializer
         if self.action == 'reset_password':
             return AdminResetUserPasswordSerializer
+        if self.action == 'guides':
+            return GuideSerializer
         return AdminUserListSerializer
 
     def get_queryset(self):
@@ -198,10 +197,12 @@ class AdminUserViewSet(viewsets.ModelViewSet):
 
         query_params = getattr(self.request, 'query_params', getattr(self.request, 'GET', {}))
 
-        # Lọc theo vai trò (role)
+        # Lọc theo vai trò (role: admin, staff, customer)
         role = query_params.get('role', '').lower().strip()
         if role == 'admin':
-            qs = qs.filter(Q(is_superuser=True) | Q(is_staff=True))
+            qs = qs.filter(is_superuser=True)
+        elif role == 'staff':
+            qs = qs.filter(is_staff=True, is_superuser=False)
         elif role == 'customer':
             qs = qs.filter(is_superuser=False, is_staff=False)
 
@@ -221,7 +222,7 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                 {'error': 'Bạn không thể tự xoá tài khoản của chính mình!'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        if (user.is_superuser or user.is_staff) and User.objects.filter(Q(is_superuser=True) | Q(is_staff=True)).count() <= 1:
+        if user.is_superuser and User.objects.filter(is_superuser=True).count() <= 1:
             return Response(
                 {'error': 'Không thể xoá Quản trị viên duy nhất của hệ thống!'},
                 status=status.HTTP_400_BAD_REQUEST
@@ -237,6 +238,11 @@ class AdminUserViewSet(viewsets.ModelViewSet):
                 {'error': 'Bạn không thể tự khoá tài khoản của chính mình!'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+        if user.is_superuser and user.is_active and User.objects.filter(is_superuser=True, is_active=True).count() <= 1:
+            return Response(
+                {'error': 'Không thể khoá Quản trị viên đang hoạt động duy nhất của hệ thống!'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         user.is_active = not user.is_active
         user.save(update_fields=['is_active'])
         return Response({
@@ -247,25 +253,103 @@ class AdminUserViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='reset-password')
     def reset_password(self, request, pk=None):
-        """Đặt lại mật khẩu cho tài khoản người dùng bởi Admin."""
+        """
+        Đặt lại mật khẩu cho tài khoản người dùng về mặc định 123456 (hoặc mật khẩu chỉ định).
+        Gửi email thông báo mật khẩu mới đến hòm thư của người dùng qua Gmail SMTP.
+        """
         user = self.get_object()
-        serializer = AdminResetUserPasswordSerializer(data=request.data)
+        serializer = AdminResetUserPasswordSerializer(data=request.data or {})
         serializer.is_valid(raise_exception=True)
-        user.set_password(serializer.validated_data['new_password'])
+        new_pwd = serializer.validated_data.get('new_password') or '123456'
+
+        # Nếu request gửi kèm email (đặc biệt khi tài khoản chưa có Email), cập nhật vào tài khoản
+        email_input = str(request.data.get('email', '')).strip()
+        if email_input and (not user.email or user.email != email_input):
+            user.email = email_input
+            user.save(update_fields=['email'])
+
+        user.set_password(new_pwd)
         user.save(update_fields=['password'])
-        return Response({'message': f'Đổi mật khẩu thành công cho tài khoản {user.username}.'})
+
+        # Gửi email thông báo thật qua Gmail SMTP nếu user có email
+        email_sent = False
+        email_message = ''
+        if user.email:
+            try:
+                subject = f'[Tourism] Mật khẩu mới cho tài khoản @{user.username}'
+                html_content = f"""
+                <div style="font-family: Arial, sans-serif; max-width: 580px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 12px; background: #ffffff;">
+                  <div style="text-align: center; padding-bottom: 16px; border-bottom: 2px solid #f1f5f9;">
+                    <h2 style="color: #4f46e5; margin: 0; font-size: 24px;">🌍 Tourism</h2>
+                    <p style="color: #64748b; margin: 4px 0 0; font-size: 13px;">Hệ Thống Đặt Tour & Quản Lý Du Lịch</p>
+                  </div>
+                  <div style="padding: 20px 0;">
+                    <p style="color: #1e293b; font-size: 15px; margin: 0 0 12px;">Xin chào <strong>{user.first_name or user.username}</strong>,</p>
+                    <p style="color: #475569; font-size: 14px; line-height: 1.5; margin: 0 0 16px;">
+                      Quản trị viên đã thực hiện đặt lại mật khẩu cho tài khoản <strong>@{user.username}</strong> của bạn.
+                    </p>
+                    <div style="background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 8px; padding: 16px; text-align: center; margin: 16px 0;">
+                      <div style="color: #64748b; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">Mật khẩu mới của bạn</div>
+                      <div style="color: #4f46e5; font-size: 26px; font-weight: 800; letter-spacing: 3px; margin-top: 6px;">{new_pwd}</div>
+                    </div>
+                    <p style="color: #dc2626; font-size: 13px; line-height: 1.4; margin: 16px 0 0;">
+                      ⚠️ <strong>Lưu ý:</strong> Để đảm bảo an toàn, vui lòng đăng nhập và đổi lại mật khẩu của bạn sau khi nhận được thông báo này.
+                    </p>
+                    <div style="text-align: center; margin-top: 24px;">
+                      <a href="http://localhost:5173" style="background: #4f46e5; color: #ffffff; padding: 10px 22px; text-decoration: none; border-radius: 6px; font-size: 14px; font-weight: 600; display: inline-block;">
+                        Đăng nhập hệ thống →
+                      </a>
+                    </div>
+                  </div>
+                  <div style="text-align: center; padding-top: 16px; border-top: 1px solid #f1f5f9; color: #94a3b8; font-size: 12px;">
+                    © 2026 Tourism Project. Đồ án tốt nghiệp.
+                  </div>
+                </div>
+                """
+                plain_body = f"Xin chào {user.username},\nMật khẩu tài khoản của bạn đã được đặt lại thành: {new_pwd}\nVui lòng đăng nhập tại http://localhost:5173 và đổi lại mật khẩu."
+                from_addr = f"Tourism System <{settings.EMAIL_HOST_USER}>" if getattr(settings, 'EMAIL_HOST_USER', None) else getattr(settings, 'DEFAULT_FROM_EMAIL', 'no-reply@tourism.vn')
+                msg = EmailMultiAlternatives(subject, plain_body, from_addr, [user.email])
+                msg.attach_alternative(html_content, "text/html")
+                msg.send(fail_silently=False)
+                email_sent = True
+                email_message = f'Đã gửi email thông báo tới {user.email}'
+            except Exception as e:
+                email_sent = False
+                email_message = f'Không thể gửi email: {str(e)}'
+        else:
+            email_message = 'Tài khoản chưa có Email để gửi thông báo.'
+
+        return Response({
+            'message': f'Mật khẩu của tài khoản {user.username} đã được đặt lại về "{new_pwd}".',
+            'default_password': new_pwd,
+            'user_id': user.pk,
+            'username': user.username,
+            'email': user.email,
+            'email_sent': email_sent,
+            'email_message': email_message,
+        })
 
     @action(detail=False, methods=['get'], url_path='stats')
     def stats(self, request):
-        """Trả về thống kê nhanh tổng số lượng người dùng: Khách hàng và Quản trị viên."""
+        """Trả về thống kê nhanh tổng số lượng người dùng: Khách hàng, Nhân viên và Quản trị viên."""
         total_users     = User.objects.count()
-        total_admins    = User.objects.filter(Q(is_superuser=True) | Q(is_staff=True)).count()
+        total_admins    = User.objects.filter(is_superuser=True).count()
+        total_staff     = User.objects.filter(is_staff=True, is_superuser=False).count()
         total_customers = User.objects.filter(is_superuser=False, is_staff=False).count()
         total_inactive  = User.objects.filter(is_active=False).count()
 
         return Response({
             'total_users':     total_users,
             'total_admins':    total_admins,
+            'total_staff':     total_staff,
             'total_customers': total_customers,
             'total_inactive':  total_inactive,
         })
+
+    @action(detail=False, methods=['get'], url_path='guides', permission_classes=[IsStaffOrSuperUser])
+    def guides(self, request):
+        """Danh sách nhân viên / HDV để gán vào tour (cả Admin và Staff đều có thể gọi)."""
+        guides_qs = User.objects.filter(is_staff=True, is_active=True).order_by('first_name', 'username')
+        serializer = GuideSerializer(guides_qs, many=True)
+        return Response(serializer.data)
+

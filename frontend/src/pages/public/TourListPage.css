@@ -895,11 +895,18 @@
   stroke: #ff5b00;
 }
 
-/* Hot Badge */
-.card-hot-badge {
+/* Badges on Card Thumbnail */
+.card-badges-wrapper {
   position: absolute;
   top: 10px;
   left: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  z-index: 2;
+}
+
+.card-hot-badge {
   background: #ff5b00;
   color: #fff;
   font-size: 0.72rem;
@@ -908,7 +915,18 @@
   border-radius: 4px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  z-index: 2;
+}
+
+.card-sale-badge {
+  background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  box-shadow: 0 2px 5px rgba(220, 38, 38, 0.4);
 }
 
 /* Card Content Info */
@@ -991,6 +1009,23 @@
   font-weight: 700;
   color: #1a1a1a;
   letter-spacing: -0.01em;
+}
+
+.sell-price.sale-highlight {
+  color: #dc2626;
+}
+
+.card-price-sale-wrap {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.original-price-strike {
+  font-size: 0.72rem;
+  color: #94a3b8;
+  text-decoration: line-through;
+  font-weight: 400;
 }
 
 .sell-price-prefix {

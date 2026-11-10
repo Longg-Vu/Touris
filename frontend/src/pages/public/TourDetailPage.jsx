@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { tourAPI, reviewAPI, bookingAPI } from '../../api/services';
+import { tourAPI, reviewAPI, bookingAPI, consultationAPI } from '../../api/services';
 import { useAuth } from '../../context/AuthContext';
+import { useFavorites } from '../../context/FavoritesContext';
 import './TourDetailPage.css';
 
 /* ── helpers ─────────────────────────────────────────────── */
@@ -30,8 +31,8 @@ const tagClass = (tag) => {
   return 'tdp-tag--generic';
 };
 
-/* static demo data enriching the real API data */
-const HIGHLIGHTS = [
+/* static default data fallback in case tour has not populated custom data yet */
+const DEFAULT_HIGHLIGHTS = [
   { icon: '🏞️', text: 'Khám phá cảnh quan thiên nhiên tuyệt đẹp cùng hướng dẫn viên chuyên nghiệp' },
   { icon: '🚌', text: 'Xe đưa đón tận khách sạn, tiện lợi và thoải mái' },
   { icon: '🍜', text: 'Bữa trưa địa phương đặc sắc được bao gồm trong tour' },
@@ -40,9 +41,9 @@ const HIGHLIGHTS = [
   { icon: '🎫', text: 'Vé tham quan tất cả các điểm trong lịch trình đã được bao gồm' },
 ];
 
-const ITINERARY = [
-  { time: '07:30', desc: 'Xe đón tại khách sạn – điểm tập kết trung tâm thành phố' },
-  { time: '08:00 – 10:30', desc: 'Tham quan điểm đến chính, nghe thuyết minh lịch sử và chụp ảnh lưu niệm' },
+const DEFAULT_ITINERARY = [
+  { time: '07:30 - 08:30', desc: 'Xe đón tại khách sạn – điểm tập kết trung tâm thành phố' },
+  { time: '08:30 – 10:30', desc: 'Tham quan điểm đến chính, nghe thuyết minh lịch sử và chụp ảnh lưu niệm' },
   { time: '10:30 – 12:00', desc: 'Di chuyển đến điểm tham quan thứ hai, khám phá kiến trúc và thiên nhiên' },
   { time: '12:00 – 13:30', desc: 'Thưởng thức bữa trưa tại nhà hàng địa phương với ẩm thực đặc trưng' },
   { time: '13:30 – 16:00', desc: 'Tiếp tục hành trình đến điểm cuối, trải nghiệm văn hóa bản địa' },
@@ -60,12 +61,6 @@ const INCLUSIONS = [
   { icon: '❌', text: 'Tip hướng dẫn viên' },
 ];
 
-const DEMO_REVIEWS = [
-  { id: 1, name: 'Nguyễn Minh Tuấn', rating: 5, date: '12/09/2026', text: 'Tour rất tuyệt vời! Hướng dẫn viên nhiệt tình, xe thoải mái. Phong cảnh đẹp hơn mong đợi. Sẽ giới thiệu cho bạn bè.' },
-  { id: 2, name: 'Trần Thị Mai', rating: 4, date: '05/09/2026', text: 'Trải nghiệm rất tốt, bữa trưa ngon. Chỉ tiếc thời gian tại một số điểm hơi ngắn, nhưng nhìn chung rất hài lòng.' },
-  { id: 3, name: 'Lê Văn Hoàng', rating: 5, date: '28/08/2026', text: 'Đây là lần thứ 3 tôi đặt tour của công ty. Luôn được phục vụ chu đáo và chuyên nghiệp. Rất đáng tiền!' },
-];
-
 /* ────────────────────────────────────────────────────────── */
 function TourDetailPage() {
   const { id } = useParams();
@@ -77,11 +72,21 @@ function TourDetailPage() {
   const [loading, setLoading]     = useState(true);
   const [error, setError]         = useState(null);
 
+  /* review submission state */
+  const [canReviewData, setCanReviewData]       = useState(null);
+  const [userRating, setUserRating]             = useState(5);
+  const [hoverRating, setHoverRating]           = useState(0);
+  const [userComment, setUserComment]           = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [reviewError, setReviewError]           = useState('');
+  const [reviewSuccess, setReviewSuccess]       = useState('');
+  const [deletingReviewId, setDeletingReviewId] = useState(null);
+
   /* booking widget state */
   const [date, setDate]         = useState('');
   const [adults, setAdults]     = useState(1);
   const [children, setChildren] = useState(0);
-  const [wishlist, setWishlist] = useState(false);
+  const { isFavorite, toggleFavorite } = useFavorites();
 
   /* booking modal state */
   const [showModal, setShowModal]       = useState(false);
@@ -94,10 +99,45 @@ function TourDetailPage() {
   const [contactEmail, setContactEmail] = useState('');
   const [specialReq, setSpecialReq]     = useState('');
   const [formError, setFormError]       = useState('');
+  const [copiedCode, setCopiedCode]     = useState(false);
+
+  /* consultation modal state */
+  const [showConsultModal, setShowConsultModal]   = useState(false);
+  const [consultName, setConsultName]             = useState('');
+  const [consultPhone, setConsultPhone]           = useState('');
+  const [consultEmail, setConsultEmail]           = useState('');
+  const [consultNote, setConsultNote]             = useState('');
+  const [consultSubmitting, setConsultSubmitting] = useState(false);
+  const [consultSuccess, setConsultSuccess]       = useState(false);
+  const [consultError, setConsultError]           = useState('');
+
+  /* photo gallery lightbox state */
+  const [lightboxOpen, setLightboxOpen]           = useState(false);
+  const [lightboxIdx, setLightboxIdx]             = useState(0);
 
   const { user, openAuthModal } = useAuth();
 
   /* fetch tour + reviews + similar */
+  const fetchReviewsAndPermissions = async () => {
+    try {
+      const reviewRes = await reviewAPI.getByTour(id);
+      const raw = reviewRes.data?.results ?? reviewRes.data ?? [];
+      setReviews(Array.isArray(raw) ? raw : []);
+    } catch {
+      setReviews([]);
+    }
+    if (user) {
+      try {
+        const canRes = await reviewAPI.canReview(id);
+        setCanReviewData(canRes.data);
+      } catch {
+        setCanReviewData(null);
+      }
+    } else {
+      setCanReviewData(null);
+    }
+  };
+
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -123,22 +163,166 @@ function TourDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  useEffect(() => {
+    if (user && id) {
+      reviewAPI.canReview(id)
+        .then(res => setCanReviewData(res.data))
+        .catch(() => setCanReviewData(null));
+    } else {
+      setCanReviewData(null);
+    }
+  }, [user, id]);
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!user) {
+      openAuthModal('login');
+      return;
+    }
+    if (userComment.trim().length < 5) {
+      setReviewError('Vui lòng nhập nhận xét ít nhất 5 ký tự.');
+      return;
+    }
+    setSubmittingReview(true);
+    setReviewError('');
+    setReviewSuccess('');
+    try {
+      await reviewAPI.create({
+        tour: id,
+        rating: userRating,
+        comment: userComment.trim(),
+      });
+      setUserComment('');
+      setUserRating(5);
+      setReviewSuccess('Cảm ơn bạn! Đánh giá đã được đăng thành công.');
+      await fetchReviewsAndPermissions();
+      const updatedTour = await tourAPI.getById(id);
+      setTour(updatedTour.data);
+    } catch (err) {
+      const msg = err.response?.data?.detail
+        || Object.values(err.response?.data || {})[0]
+        || 'Gửi đánh giá thất bại. Vui lòng thử lại.';
+      setReviewError(Array.isArray(msg) ? msg[0] : msg);
+    } finally {
+      setSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    if (!window.confirm('Bạn có chắc muốn xoá đánh giá này?')) return;
+    setDeletingReviewId(reviewId);
+    try {
+      await reviewAPI.delete(reviewId);
+      await fetchReviewsAndPermissions();
+      const updatedTour = await tourAPI.getById(id);
+      setTour(updatedTour.data);
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Không thể xoá đánh giá.');
+    } finally {
+      setDeletingReviewId(null);
+    }
+  };
+
+  /* ── consultation handlers ───────────── */
+  const handleOpenConsultModal = () => {
+    if (user) {
+      setConsultName(user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username);
+      setConsultEmail(user.email || '');
+      setConsultPhone(user.phone || '');
+    } else {
+      try {
+        const savedGuest = JSON.parse(localStorage.getItem('guest_contact') || '{}');
+        if (savedGuest.name) setConsultName(savedGuest.name);
+        if (savedGuest.phone) setConsultPhone(savedGuest.phone);
+        if (savedGuest.email) setConsultEmail(savedGuest.email);
+      } catch {
+        // ignore
+      }
+    }
+    setConsultNote('');
+    setConsultSuccess(false);
+    setConsultError('');
+    setShowConsultModal(true);
+  };
+
+  const handleSubmitConsultation = async (e) => {
+    e.preventDefault();
+    if (!consultName.trim()) {
+      setConsultError('Vui lòng nhập họ và tên của bạn.');
+      return;
+    }
+    if (!consultPhone.trim()) {
+      setConsultError('Vui lòng nhập số điện thoại để chúng tôi liên hệ tư vấn.');
+      return;
+    }
+    if (!consultEmail.trim()) {
+      setConsultError('Vui lòng nhập email để nhận lịch trình và xác nhận hỗ trợ.');
+      return;
+    }
+
+    setConsultSubmitting(true);
+    setConsultError('');
+    try {
+      await consultationAPI.create({
+        tour_id: tour.id,
+        customer_name: consultName.trim(),
+        phone: consultPhone.trim(),
+        email: consultEmail.trim(),
+        note: consultNote.trim(),
+      });
+      try {
+        localStorage.setItem('guest_contact', JSON.stringify({
+          name: consultName.trim(),
+          phone: consultPhone.trim(),
+          email: consultEmail.trim(),
+        }));
+      } catch {
+        // ignore
+      }
+      setConsultSuccess(true);
+    } catch (err) {
+      const msg = err.response?.data?.customer_name?.[0]
+        || err.response?.data?.phone?.[0]
+        || err.response?.data?.email?.[0]
+        || err.response?.data?.detail
+        || 'Gửi yêu cầu không thành công. Vui lòng kiểm tra lại thông tin và thử lại!';
+      setConsultError(Array.isArray(msg) ? msg[0] : msg);
+    } finally {
+      setConsultSubmitting(false);
+    }
+  };
+
   /* ── derived values ──────────────────── */
-  const totalPrice = tour
-    ? (parseFloat(tour.price_adult) * adults) + (parseFloat(tour.price_adult) * 0.7 * children)
+  const effectivePriceAdult = tour
+    ? (tour.is_priority_sale && tour.sale_percent > 0 && tour.sale_price
+        ? parseFloat(tour.sale_price)
+        : parseFloat(tour.price_adult))
     : 0;
 
-  const displayReviews = reviews.length > 0 ? reviews : DEMO_REVIEWS;
+  const totalPrice = tour
+    ? (effectivePriceAdult * adults) + (effectivePriceAdult * 0.7 * children)
+    : 0;
+
+  const displayReviews = reviews;
   const avgRating = tour ? parseFloat(tour.rating) : 0;
 
   /* rating bar data */
   const ratingBars = [5, 4, 3, 2, 1].map(star => ({
     star,
-    count: displayReviews.filter(r => Math.round(r.rating || r.star || 5) === star).length,
+    count: displayReviews.filter(r => Math.round(r.rating || 5) === star).length,
     pct: 0,
   }));
   const totalRev = displayReviews.length || 1;
   ratingBars.forEach(b => { b.pct = Math.round((b.count / totalRev) * 100); });
+
+  /* dynamic highlights & itinerary with fallback */
+  const tourHighlights = (tour?.highlights && Array.isArray(tour.highlights) && tour.highlights.length > 0)
+    ? tour.highlights
+    : DEFAULT_HIGHLIGHTS;
+
+  const tourItinerary = (tour?.itinerary && Array.isArray(tour.itinerary) && tour.itinerary.length > 0)
+    ? tour.itinerary
+    : DEFAULT_ITINERARY;
 
   /* ── loading / error ─────────────────── */
   if (loading) return (
@@ -156,8 +340,37 @@ function TourDetailPage() {
   );
   if (!tour) return null;
 
-  /* thumbnail variants for gallery (demo) */
-  const imgs = [tour.thumbnail, tour.thumbnail, tour.thumbnail];
+  /* ── build HD gallery (5-6 distinct photos) ── */
+  const upgradeToHd = (url) => {
+    if (!url) return '';
+    return url.replace('w_500,h_313,c_fill,q_85', 'w_1200,h_800,c_fill,q_90');
+  };
+  const fallbackScenery = [
+    'https://res.klook.com/image/upload/w_1200,h_800,c_fill,q_90/activities/d4qvu1nvhzpue5thgs2u.webp',
+    'https://res.klook.com/image/upload/w_1200,h_800,c_fill,q_90/activities/vhjgb3krsepzdzboth4h.webp',
+    'https://res.klook.com/image/upload/w_1200,h_800,c_fill,q_90/activities/c1dndlvxxxfgnj8spbgo.webp',
+    'https://res.klook.com/image/upload/w_1200,h_800,c_fill,q_90/activities/mggyeli2qotfpcvbx0zg.webp',
+    'https://res.klook.com/image/upload/w_1200,h_800,c_fill,q_90/activities/atxlxektyt8nfatloug0.webp',
+  ];
+  const rawGallery = Array.isArray(tour.gallery) && tour.gallery.length > 0
+    ? tour.gallery.map(upgradeToHd).filter(Boolean)
+    : [];
+  const mainThumbHd = upgradeToHd(tour.thumbnail);
+  const imgs = [];
+  if (mainThumbHd) imgs.push(mainThumbHd);
+  for (const gUrl of [...rawGallery, ...fallbackScenery]) {
+    if (gUrl && !imgs.includes(gUrl)) imgs.push(gUrl);
+    if (imgs.length >= 6) break;
+  }
+
+  const openLightbox = (index = 0) => {
+    setLightboxIdx(index);
+    setLightboxOpen(true);
+  };
+  const handleImgError = (e, idx = 0) => {
+    e.currentTarget.onerror = null;
+    e.currentTarget.src = fallbackScenery[idx % fallbackScenery.length];
+  };
 
   return (
     <>
@@ -177,22 +390,48 @@ function TourDetailPage() {
         <span className="current">{tour.name.length > 60 ? tour.name.slice(0, 60) + '…' : tour.name}</span>
       </nav>
 
-      {/* ── Gallery ──────────────────────────────────────── */}
+      {/* ── Gallery (5-photo Bento Grid + Lightbox Trigger) ─ */}
       <section className="tdp-gallery" id="tdp-gallery">
-        <div className="tdp-gallery__main">
-          {tour.is_hot && <span className="tdp-hot-badge">🔥 Hot</span>}
-          <img src={imgs[0]} alt={tour.name} />
-        </div>
-        <div className="tdp-gallery__thumb">
-          <img src={imgs[1]} alt={tour.name + ' 2'} />
-        </div>
-        <div className="tdp-gallery__thumb">
-          <img src={imgs[2]} alt={tour.name + ' 3'} />
-          <div className="tdp-gallery__more-overlay">
-            <span style={{ fontSize: 26 }}>🖼️</span>
-            <span>Xem tất cả ảnh</span>
+        <div className="tdp-gallery__main" onClick={() => openLightbox(0)}>
+          <div className="tdp-gallery-badges">
+            {Boolean(tour.is_hot) && <span className="tdp-hot-badge">🔥 Hot</span>}
+            {Boolean(tour.is_priority_sale && Number(tour.sale_percent) > 0) && (
+              <span className="tdp-sale-badge">⚡ SALE {tour.sale_percent}%</span>
+            )}
           </div>
+          <img src={imgs[0]} alt={tour.name} onError={(e) => handleImgError(e, 0)} />
+          <div className="tdp-gallery__caption-pill">📸 Khám phá thực tế</div>
         </div>
+
+        {imgs.slice(1, 5).map((imgUrl, idx) => {
+          const actualIdx = idx + 1;
+          const isLastCell = idx === 3;
+          return (
+            <div
+              key={actualIdx}
+              className="tdp-gallery__thumb"
+              onClick={() => openLightbox(actualIdx)}
+            >
+              <img
+                src={imgUrl}
+                alt={`${tour.name} - Góc chụp ${actualIdx + 1}`}
+                onError={(e) => handleImgError(e, actualIdx)}
+              />
+              {isLastCell && (
+                <div
+                  className="tdp-gallery__more-overlay"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openLightbox(0);
+                  }}
+                >
+                  <span style={{ fontSize: 24 }}>🖼️</span>
+                  <span>Xem tất cả {imgs.length} ảnh</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </section>
 
       {/* ── Body ─────────────────────────────────────────── */}
@@ -209,6 +448,16 @@ function TourDetailPage() {
               </Link>
             )}
             <h1 className="tdp-title">{tour.name}</h1>
+
+            {tour.is_priority_sale && tour.sale_percent > 0 && (
+              <div className="tdp-flash-sale-banner">
+                <span className="tdp-flash-sale-icon">⚡</span>
+                <div className="tdp-flash-sale-info">
+                  <strong>Ưu đãi Flash Sale chốt đoàn: Giảm ngay {tour.sale_percent}%</strong>
+                  <span>Số lượng chỗ ưu đãi có hạn – Đặt ngay hôm nay để nhận mức giá tốt nhất!</span>
+                </div>
+              </div>
+            )}
 
             <div className="tdp-meta-row">
               <div className="tdp-rating">
@@ -242,7 +491,7 @@ function TourDetailPage() {
           <section className="tdp-section" id="tdp-highlights">
             <h2 className="tdp-section-title">Điểm nổi bật</h2>
             <div className="tdp-highlights">
-              {HIGHLIGHTS.map((h, i) => (
+              {tourHighlights.map((h, i) => (
                 <div key={i} className="tdp-highlight-item">
                   <div className="tdp-highlight-icon">{h.icon}</div>
                   <div className="tdp-highlight-text">{h.text}</div>
@@ -251,11 +500,45 @@ function TourDetailPage() {
             </div>
           </section>
 
+          {/* Guide info */}
+          {tour.guide && (
+            <section className="tdp-section" id="tdp-guide">
+              <h2 className="tdp-section-title">Hướng dẫn viên phụ trách</h2>
+              <div className="tdp-guide-card">
+                <div className="tdp-guide-avatar-wrap">
+                  {tour.guide.avatar ? (
+                    <img src={tour.guide.avatar} alt={tour.guide.name} className="tdp-guide-avatar-img" />
+                  ) : (
+                    <div className="tdp-guide-avatar-fallback">
+                      {(tour.guide.name || 'HDV').slice(0, 2).toUpperCase()}
+                    </div>
+                  )}
+                  <span className="tdp-guide-badge" title="Đã được chứng nhận">✓</span>
+                </div>
+                <div className="tdp-guide-info">
+                  <div className="tdp-guide-top">
+                    <h3 className="tdp-guide-name">{tour.guide.name}</h3>
+                    <span className="tdp-guide-role-tag">👷 HDV Chính thức</span>
+                  </div>
+                  <p className="tdp-guide-desc">
+                    Người đồng hành, phụ trách thuyết minh và hỗ trợ an toàn cho bạn trong suốt chuyến đi.
+                  </p>
+                  <div className="tdp-guide-meta">
+                    {tour.guide.phone && (
+                      <span className="tdp-guide-phone">📞 Liên hệ / Zalo: <strong>{tour.guide.phone}</strong></span>
+                    )}
+                    <span className="tdp-guide-badge-note">🛡️ Hỗ trợ tận tâm 24/7</span>
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           {/* Itinerary */}
           <section className="tdp-section" id="tdp-itinerary">
             <h2 className="tdp-section-title">Lịch trình chi tiết</h2>
             <ol className="tdp-itinerary">
-              {ITINERARY.map((item, i) => (
+              {tourItinerary.map((item, i) => (
                 <li key={i} className="tdp-itinerary-item">
                   <div className="tdp-itinerary-dot">{i + 1}</div>
                   <div className="tdp-itinerary-content">
@@ -332,12 +615,14 @@ function TourDetailPage() {
 
           {/* Reviews */}
           <section className="tdp-section" id="tdp-reviews">
-            <h2 className="tdp-section-title">Đánh giá từ khách hàng</h2>
+            <h2 className="tdp-section-title">Đánh giá từ khách hàng ({displayReviews.length})</h2>
+
+            {/* Thống kê tổng quan */}
             <div className="tdp-reviews-summary">
               <div className="tdp-reviews-score-big">
-                <div className="tdp-score-number">{avgRating.toFixed(1)}</div>
-                <div className="tdp-stars">{renderStars(avgRating, 18)}</div>
-                <div className="tdp-score-label">{displayReviews.length} đánh giá</div>
+                <div className="tdp-score-number">{avgRating > 0 ? avgRating.toFixed(1) : '5.0'}</div>
+                <div className="tdp-stars">{renderStars(avgRating > 0 ? avgRating : 5, 18)}</div>
+                <div className="tdp-score-label">{displayReviews.length} đánh giá thực tế</div>
               </div>
               <div className="tdp-review-bars">
                 {ratingBars.map(b => (
@@ -352,30 +637,155 @@ function TourDetailPage() {
               </div>
             </div>
 
+            {/* Banners & Form gửi đánh giá */}
+            {!user && (
+              <div className="tdp-review-banner tdp-review-banner--info">
+                <div>
+                  <strong>Bạn đã từng tham gia tour này?</strong>
+                  <p style={{ margin: '4px 0 0', fontSize: 13, opacity: 0.85 }}>Đăng nhập tài khoản để chia sẻ cảm nhận và hình ảnh chuyến đi của bạn.</p>
+                </div>
+                <button className="tdp-review-banner-btn" onClick={() => openAuthModal('login')}>
+                  🔑 Đăng nhập để đánh giá
+                </button>
+              </div>
+            )}
+
+            {user && canReviewData?.has_reviewed && (
+              <div className="tdp-review-banner tdp-review-banner--done">
+                <span>🎉 <strong>Bạn đã gửi đánh giá cho tour này.</strong> Cảm ơn bạn đã đồng hành và chia sẻ trải nghiệm cùng chúng tôi!</span>
+              </div>
+            )}
+
+            {user && !canReviewData?.can_review && !canReviewData?.has_reviewed && canReviewData?.message && (
+              <div className="tdp-review-banner tdp-review-banner--info">
+                <span>ℹ️ {canReviewData.message}</span>
+              </div>
+            )}
+
+            {user && canReviewData?.can_review && (
+              <form className="tdp-write-review-card" onSubmit={handleSubmitReview}>
+                <h3 className="tdp-review-form-title">
+                  ✍️ Viết đánh giá & nhận xét của bạn
+                </h3>
+
+                {reviewSuccess && (
+                  <div className="tdp-review-alert tdp-review-alert--success">
+                    ✅ {reviewSuccess}
+                  </div>
+                )}
+                {reviewError && (
+                  <div className="tdp-review-alert tdp-review-alert--error">
+                    ⚠️ {reviewError}
+                  </div>
+                )}
+
+                {/* Chọn số sao */}
+                <div className="tdp-rating-input-row">
+                  <span className="tdp-rating-input-label">Mức độ hài lòng:</span>
+                  <div className="tdp-stars-selector">
+                    {[1, 2, 3, 4, 5].map((star) => {
+                      const isFilled = star <= (hoverRating || userRating);
+                      return (
+                        <button
+                          key={star}
+                          type="button"
+                          className="tdp-star-btn"
+                          onMouseEnter={() => setHoverRating(star)}
+                          onMouseLeave={() => setHoverRating(0)}
+                          onClick={() => setUserRating(star)}
+                        >
+                          <span style={{ color: isFilled ? '#fbbf24' : '#cbd5e1' }}>★</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="tdp-star-rating-hint">
+                    {(() => {
+                      const score = hoverRating || userRating;
+                      if (score === 5) return '⭐⭐⭐⭐⭐ Tuyệt vời!';
+                      if (score === 4) return '⭐⭐⭐⭐ Rất hài lòng';
+                      if (score === 3) return '⭐⭐⭐ Bình thường';
+                      if (score === 2) return '⭐⭐ Không hài lòng';
+                      return '⭐ Rất tệ';
+                    })()}
+                  </span>
+                </div>
+
+                {/* Nhập nội dung nhận xét */}
+                <textarea
+                  className="tdp-review-textarea"
+                  placeholder="Chia sẻ trải nghiệm thực tế của bạn về hướng dẫn viên, phương tiện di chuyển, bữa ăn, cảnh quan và dịch vụ..."
+                  rows={4}
+                  value={userComment}
+                  onChange={(e) => setUserComment(e.target.value)}
+                  maxLength={1000}
+                />
+
+                <div className="tdp-review-form-actions">
+                  <span className="tdp-review-char-count">{userComment.length} / 1000 ký tự (tối thiểu 5)</span>
+                  <button
+                    type="submit"
+                    className="tdp-btn-submit-review"
+                    disabled={submittingReview || userComment.trim().length < 5}
+                  >
+                    {submittingReview ? 'Đang gửi...' : '🚀 Gửi đánh giá ngay'}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Danh sách các bài đánh giá */}
             <div className="tdp-review-list">
               {displayReviews.length === 0 ? (
-                <div className="tdp-no-review">💬 Chưa có đánh giá nào. Hãy là người đầu tiên!</div>
+                <div className="tdp-no-review">💬 Chưa có đánh giá nào. Hãy là người đầu tiên trải nghiệm và chia sẻ cảm nhận!</div>
               ) : (
                 displayReviews.map((rev, idx) => {
-                  const initials = (rev.name || rev.user || 'KH').slice(0, 2).toUpperCase();
+                  const authorName = rev.user_name || rev.name || rev.user || 'Khách hàng';
+                  const initials = authorName.slice(0, 2).toUpperCase();
                   const color = avatarColors[idx % avatarColors.length];
+                  const canDelete = rev.is_mine || (user && (user.is_staff || user.is_superuser));
+
                   return (
                     <div key={rev.id || idx} className="tdp-review-card">
                       <div className="tdp-review-header">
-                        <div className="tdp-reviewer-avatar-placeholder" style={{ background: color }}>
-                          {initials}
-                        </div>
+                        {rev.user_avatar ? (
+                          <img
+                            src={rev.user_avatar}
+                            alt={authorName}
+                            className="tdp-reviewer-avatar-img"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        ) : (
+                          <div className="tdp-reviewer-avatar-placeholder" style={{ background: color }}>
+                            {initials}
+                          </div>
+                        )}
                         <div className="tdp-reviewer-info">
-                          <div className="tdp-reviewer-name">{rev.name || rev.user || 'Khách hàng'}</div>
-                          <div className="tdp-review-date">{rev.date || rev.created_at?.slice(0, 10) || '2026'}</div>
+                          <div className="tdp-reviewer-name">
+                            {authorName}
+                            <span className="tdp-review-badge-verified">✓ Đã trải nghiệm</span>
+                          </div>
+                          <div className="tdp-review-date">
+                            {rev.created_at ? new Date(rev.created_at).toLocaleDateString('vi-VN') : (rev.date || 'Gần đây')}
+                          </div>
                         </div>
                         <div className="tdp-review-stars">
                           {Array.from({ length: Math.round(rev.rating || rev.star || 5) }, (_, i) => (
                             <span key={i} className="tdp-review-star">★</span>
                           ))}
                         </div>
+                        {canDelete && (
+                          <button
+                            className="tdp-review-delete-btn"
+                            title="Xoá đánh giá"
+                            disabled={deletingReviewId === rev.id}
+                            onClick={() => handleDeleteReview(rev.id)}
+                          >
+                            {deletingReviewId === rev.id ? 'Đang xoá...' : '🗑️ Xoá'}
+                          </button>
+                        )}
                       </div>
-                      <p className="tdp-review-text">{rev.text || rev.comment || ''}</p>
+                      <p className="tdp-review-text">{rev.comment || rev.text || ''}</p>
                     </div>
                   );
                 })
@@ -400,11 +810,23 @@ function TourDetailPage() {
         <aside className="tdp-booking-widget" id="tdp-booking-widget">
           <div className="tdp-widget-header">
             <div className="tdp-widget-price-label">Giá từ</div>
-            <div className="tdp-widget-price">
-              {fmt(tour.price_adult)} <span>/ người lớn</span>
-            </div>
+            {tour.is_priority_sale && tour.sale_percent > 0 ? (
+              <div className="tdp-widget-sale-block">
+                <div className="tdp-widget-original-price">
+                  <span>{fmt(tour.price_adult)}</span>
+                  <span className="tdp-widget-sale-badge">⚡ SALE {tour.sale_percent}%</span>
+                </div>
+                <div className="tdp-widget-price sale-price-highlight">
+                  {fmt(effectivePriceAdult)} <span>/ người lớn</span>
+                </div>
+              </div>
+            ) : (
+              <div className="tdp-widget-price">
+                {fmt(tour.price_adult)} <span>/ người lớn</span>
+              </div>
+            )}
             {tour.promo && (
-              <span className="tdp-widget-promo">🎉 {tour.promo}</span>
+              <span className="tdp-widget-promo">🏷️ {tour.promo}</span>
             )}
           </div>
 
@@ -454,13 +876,13 @@ function TourDetailPage() {
               {adults > 0 && (
                 <div className="tdp-price-row">
                   <span>Người lớn × {adults}</span>
-                  <span>{fmt(parseFloat(tour.price_adult) * adults)}</span>
+                  <span>{fmt(effectivePriceAdult * adults)}</span>
                 </div>
               )}
               {children > 0 && (
                 <div className="tdp-price-row">
                   <span>Trẻ em × {children}</span>
-                  <span>{fmt(parseFloat(tour.price_adult) * 0.7 * children)}</span>
+                  <span>{fmt(effectivePriceAdult * 0.7 * children)}</span>
                 </div>
               )}
               <div className="tdp-price-row tdp-price-row--total">
@@ -473,33 +895,49 @@ function TourDetailPage() {
               id="tdp-btn-book"
               className="tdp-btn-book"
               onClick={() => {
-                /* Bước 1: Kiểm tra đăng nhập TRƯỚC */
-                if (!user) {
-                  openAuthModal('login');
-                  return;
-                }
-                /* Bước 2: Kiểm tra ngày */
+                /* Kiểm tra chọn ngày trước */
                 if (!date) {
                   alert('Vui lòng chọn ngày khởi hành!');
                   return;
                 }
-                // Pre-fill từ profile user
-                setContactName(user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username);
-                setContactEmail(user.email || '');
-                setContactPhone(user.phone || '');
+                // Pre-fill từ profile user nếu đã đăng nhập, hoặc lấy thông tin khách gần nhất từ localStorage
+                if (user) {
+                  setContactName(user.first_name ? `${user.first_name} ${user.last_name || ''}`.trim() : user.username);
+                  setContactEmail(user.email || '');
+                  setContactPhone(user.phone || '');
+                } else {
+                  try {
+                    const savedGuest = JSON.parse(localStorage.getItem('guest_contact') || '{}');
+                    if (savedGuest.name) setContactName(savedGuest.name);
+                    if (savedGuest.phone) setContactPhone(savedGuest.phone);
+                    if (savedGuest.email) setContactEmail(savedGuest.email);
+                  } catch {
+                    // ignore
+                  }
+                }
                 setBookingStep('form');
                 setFormError('');
                 setShowModal(true);
               }}
             >
-              🎫 Đặt ngay
+              🎫 {user ? 'Đặt tour ngay' : 'Đặt ngay (Không cần tài khoản)'}
             </button>
             <button
-              id="tdp-btn-wishlist"
-              className={`tdp-btn-wishlist ${wishlist ? 'active' : ''}`}
-              onClick={() => setWishlist(w => !w)}
+              type="button"
+              id="tdp-btn-consultation"
+              className="tdp-btn-consultation"
+              onClick={handleOpenConsultModal}
             >
-              {wishlist ? '❤️ Đã lưu' : '🤍 Lưu yêu thích'}
+              💬 Cần tư vấn thêm (Gọi lại miễn phí)
+            </button>
+            <button
+              type="button"
+              id="tdp-btn-wishlist"
+              className={`tdp-btn-wishlist ${tour && isFavorite(tour.id) ? 'active' : ''}`}
+              onClick={(e) => tour && toggleFavorite(tour.id, e)}
+              title={tour && isFavorite(tour.id) ? 'Bỏ lưu khỏi danh sách yêu thích' : 'Lưu tour này vào danh sách yêu thích'}
+            >
+              {tour && isFavorite(tour.id) ? '❤️ Đã lưu yêu thích' : '🤍 Lưu yêu thích'}
             </button>
           </div>
 
@@ -541,7 +979,12 @@ function TourDetailPage() {
           <div className="bm-modal">
             {/* Header */}
             <div className="bm-header">
-              <h2 className="bm-title">Xác nhận đặt tour</h2>
+              <h2 className="bm-title">
+                {bookingStep === 'payment' && 'Thanh toán đơn tour'}
+                {bookingStep === 'pay_later_success' && 'Giữ chỗ thành công'}
+                {bookingStep === 'success' && 'Hoàn tất đặt tour'}
+                {(bookingStep === 'form' || bookingStep === 'submitting') && 'Xác nhận đặt tour'}
+              </h2>
               <button className="bm-close" onClick={() => setShowModal(false)}>✕</button>
             </div>
 
@@ -562,6 +1005,22 @@ function TourDetailPage() {
             {bookingStep === 'form' && (
               <>
                 <div className="bm-section-title">Thông tin liên hệ</div>
+
+                {!user && (
+                  <div style={{
+                    background: '#eff6ff',
+                    border: '1px solid #bfdbfe',
+                    borderRadius: 8,
+                    padding: '10px 14px',
+                    marginBottom: 14,
+                    fontSize: 13,
+                    color: '#1e40af',
+                    lineHeight: 1.5
+                  }}>
+                    ✨ <strong>Khách vãng lai:</strong> Bạn không cần đăng ký tài khoản trước. Khi đặt tour, hệ thống sẽ tự động gửi email xác nhận và cấp <strong>mật khẩu tài khoản</strong> để bạn đăng nhập lần sau!
+                  </div>
+                )}
+
                 {formError && <div className="bm-error">{formError}</div>}
                 <div className="bm-form">
                   <div className="bm-field">
@@ -585,14 +1044,18 @@ function TourDetailPage() {
                     />
                   </div>
                   <div className="bm-field bm-field--full">
-                    <label className="bm-label">Email *</label>
+                    <label className="bm-label">Email liên hệ (nhận mật khẩu & mã vé) *</label>
                     <input
                       id="bm-contact-email"
+                      type="email"
                       className="bm-input"
                       placeholder="email@example.com"
                       value={contactEmail}
                       onChange={e => setContactEmail(e.target.value)}
                     />
+                    <span style={{ fontSize: 11, color: '#64748b', marginTop: 4, display: 'block' }}>
+                      {!user ? '📧 Chúng tôi sẽ gửi thông tin đơn tour và mật khẩu đăng nhập tài khoản vào email này.' : '📧 Email nhận thông báo xác nhận đơn đặt tour.'}
+                    </span>
                   </div>
                   <div className="bm-field bm-field--full">
                     <label className="bm-label">Yêu cầu đặc biệt (tuỳ chọn)</label>
@@ -634,6 +1097,37 @@ function TourDetailPage() {
                         setBookingResult(res.data);
                         setPayMethod('bank_transfer');
                         setPayError('');
+
+                        // Lưu vào localStorage cho khách vãng lai
+                        try {
+                          localStorage.setItem('guest_contact', JSON.stringify({
+                            name: contactName.trim(),
+                            phone: contactPhone.trim(),
+                            email: contactEmail.trim(),
+                          }));
+
+                          const existing = JSON.parse(localStorage.getItem('guest_bookings') || '[]');
+                          const newItem = {
+                            id: res.data.id,
+                            booking_code: res.data.booking_code,
+                            tour: tour.id,
+                            tour_title: tour.name,
+                            tour_thumbnail: tour.thumbnail,
+                            travel_date: date,
+                            total_price: res.data.total_price || totalPrice,
+                            num_adults: adults,
+                            num_children: children,
+                            status: res.data.status || 'pending',
+                            contact_name: contactName.trim(),
+                            contact_phone: contactPhone.trim(),
+                            contact_email: contactEmail.trim(),
+                            created_at: new Date().toISOString(),
+                          };
+                          localStorage.setItem('guest_bookings', JSON.stringify([newItem, ...existing.filter(b => b.id !== res.data.id)]));
+                        } catch {
+                          // ignore storage errors
+                        }
+
                         setBookingStep('payment'); // Chuyển sang bước chọn thanh toán
                       } catch (err) {
                         const msg = err.response?.data?.detail
@@ -664,7 +1158,7 @@ function TourDetailPage() {
                 <div className="bm-success-icon" style={{ fontSize: 40, marginBottom: 8 }}>🎫</div>
                 <h3 style={{ margin: '0 0 4px', color: '#1e293b' }}>Đặt tour thành công!</h3>
                 <p style={{ color: '#64748b', margin: '0 0 20px', fontSize: 14 }}>
-                  Mã đơn: <strong>#{bookingResult?.id}</strong> – Chọn phương thức thanh toán để hoàn tất
+                  Mã đơn: <strong>#{bookingResult?.id}</strong> {bookingResult?.booking_code ? <span style={{ color: '#4f46e5', fontWeight: 700 }}>({bookingResult.booking_code})</span> : ''} – Chọn phương thức thanh toán
                 </p>
 
                 {/* Chọn phương thức */}
@@ -695,7 +1189,7 @@ function TourDetailPage() {
                       <div className="bm-qr-row"><span>Ngân hàng:</span><strong>MB Bank – 0797268696</strong></div>
                       <div className="bm-qr-row"><span>Chủ TK:</span><strong>CONG TY DU LICH TOUR FOR YOU</strong></div>
                       <div className="bm-qr-row"><span>Số tiền:</span><strong style={{ color: '#ef4444' }}>{fmt(bookingResult?.total_price || totalPrice)}</strong></div>
-                      <div className="bm-qr-row"><span>Nội dung:</span><strong>BOOKING {bookingResult?.id} {contactName.split(' ').pop()}</strong></div>
+                      <div className="bm-qr-row"><span>Nội dung:</span><strong>BOOKING {bookingResult?.id}</strong></div>
                     </div>
                     <img
                       src={`https://img.vietqr.io/image/MB-0797268696-compact2.png?amount=${bookingResult?.total_price || totalPrice}&addInfo=BOOKING${bookingResult?.id}&accountName=TOUR FOR YOU`}
@@ -703,7 +1197,7 @@ function TourDetailPage() {
                       className="bm-qr-img"
                       onError={e => { e.target.style.display = 'none'; }}
                     />
-                    <p className="bm-qr-note">📱 Mở app ngân hàng → Quét QR → Kiểm tra thông tin → Chuyển khoản</p>
+                    <p className="bm-qr-note">📱 Mở app ngân hàng bất kỳ → Quét QR → Xác nhận chuyển khoản</p>
                   </div>
                 )}
 
@@ -733,7 +1227,7 @@ function TourDetailPage() {
                 {payError && <div className="bm-error" style={{ marginTop: 12 }}>{payError}</div>}
 
                 <div className="bm-actions" style={{ marginTop: 16 }}>
-                  <button className="bm-btn-cancel" onClick={() => { setShowModal(false); navigate('/my-bookings'); }}>
+                  <button className="bm-btn-cancel" onClick={() => setBookingStep('pay_later_success')}>
                     Thanh toán sau
                   </button>
                   <button
@@ -757,6 +1251,138 @@ function TourDetailPage() {
               </div>
             )}
 
+            {/* Step: pay_later_success */}
+            {bookingStep === 'pay_later_success' && (
+              <div className="bm-success">
+                <div className="bm-success-icon" style={{ fontSize: 52, marginBottom: 8 }}>⏳</div>
+                <h3 style={{ color: '#0f172a', fontSize: 20, fontWeight: 700, margin: '0 0 6px' }}>
+                  Đặt tour & Giữ chỗ thành công!
+                </h3>
+                <p style={{ color: '#64748b', fontSize: 13.5, margin: '0 0 16px' }}>
+                  Đơn đặt của bạn đã được tiếp nhận và giữ chỗ trong vòng <strong>24 giờ</strong>.
+                </p>
+
+                {/* Tóm tắt mã đơn & thông tin */}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 12,
+                  padding: '14px 18px',
+                  marginBottom: 16,
+                  textAlign: 'left',
+                  fontSize: 13.5
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingBottom: 10, borderBottom: '1px dashed #cbd5e1' }}>
+                    <span style={{ color: '#64748b', fontWeight: 500 }}>Mã tra cứu đơn:</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <strong style={{ color: '#0284c7', background: '#e0f2fe', padding: '3px 9px', borderRadius: 6, letterSpacing: '0.5px', fontSize: 14 }}>
+                        {bookingResult?.booking_code || `#${bookingResult?.id}`}
+                      </strong>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const code = bookingResult?.booking_code || String(bookingResult?.id || '');
+                          navigator.clipboard.writeText(code);
+                          setCopiedCode(true);
+                          setTimeout(() => setCopiedCode(false), 2000);
+                        }}
+                        style={{
+                          background: '#f1f5f9',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: 6,
+                          padding: '3px 8px',
+                          fontSize: 12,
+                          cursor: 'pointer',
+                          color: '#475569'
+                        }}
+                        title="Sao chép mã đơn"
+                      >
+                        {copiedCode ? '✅ Đã chép' : '📋 Chép'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
+                    <span style={{ color: '#64748b' }}>Trạng thái:</span>
+                    <span style={{ background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: 6, fontWeight: 600, fontSize: 12 }}>
+                      ⏳ Chờ thanh toán
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 7 }}>
+                    <span style={{ color: '#64748b' }}>Số tiền cần thanh toán:</span>
+                    <strong style={{ color: '#ef4444', fontSize: 15 }}>{fmt(bookingResult?.total_price || totalPrice)}</strong>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#64748b' }}>Người liên hệ:</span>
+                    <span style={{ color: '#1e293b', fontWeight: 500 }}>{contactName} ({contactPhone})</span>
+                  </div>
+                </div>
+
+                {/* Hộp thông báo hỗ trợ & email */}
+                <div style={{
+                  background: '#eff6ff',
+                  border: '1px solid #bfdbfe',
+                  borderRadius: 10,
+                  padding: '12px 14px',
+                  fontSize: 13,
+                  color: '#1e40af',
+                  textAlign: 'left',
+                  lineHeight: 1.6,
+                  marginBottom: 18
+                }}>
+                  <div style={{ marginBottom: 6 }}>
+                    📧 Vé điện tử & thông tin chuyển khoản VietQR đã được gửi tới <strong>{contactEmail}</strong>.
+                  </div>
+                  <div>
+                    📞 Chuyên viên tư vấn sẽ liên hệ SĐT <strong>{contactPhone}</strong> trong vòng 2 giờ để hỗ trợ và chốt lịch khởi hành.
+                  </div>
+                  {!user && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #93c5fd', color: '#047857' }}>
+                      🔑 <strong>Tài khoản tra cứu tự động:</strong> Bạn có thể đăng nhập bằng email <strong>{contactEmail}</strong> (Mật khẩu: <strong>123456</strong>) để quản lý đơn hoặc xem lịch trình tour bất kỳ lúc nào!
+                    </div>
+                  )}
+                </div>
+
+                {/* Các nút hành động */}
+                <div className="bm-success-actions" style={{ flexDirection: 'column', gap: 10 }}>
+                  <div style={{ display: 'flex', gap: 10, width: '100%' }}>
+                    <button
+                      className="bm-btn-cancel"
+                      style={{ flex: 1, padding: '11px 16px', fontSize: 14, fontWeight: 600 }}
+                      onClick={() => setShowModal(false)}
+                    >
+                      🧭 Tiếp tục xem tour
+                    </button>
+                    <button
+                      className="bm-btn-confirm"
+                      style={{ flex: 1, padding: '11px 16px', fontSize: 14 }}
+                      onClick={() => { setShowModal(false); navigate('/my-bookings'); }}
+                    >
+                      📋 Xem chi tiết đơn đặt
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#0284c7',
+                      fontSize: 13.5,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: '6px 0',
+                      textDecoration: 'underline'
+                    }}
+                    onClick={() => setBookingStep('payment')}
+                  >
+                    💳 Đổi ý? Quay lại quét mã QR để thanh toán ngay
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Step: paying */}
             {bookingStep === 'paying' && (
               <div className="bm-loading">
@@ -770,16 +1396,285 @@ function TourDetailPage() {
               <div className="bm-success">
                 <div className="bm-success-icon">✅</div>
                 <h3>Thanh toán thành công!</h3>
-                <p>Mã đặt tour của bạn: <strong>#{bookingResult?.id}</strong></p>
-                <p>Chúng tôi sẽ gửi xác nhận đến email <strong>{contactEmail}</strong> trong vòng 30 phút.</p>
+                <p>Mã đặt tour của bạn: <strong>#{bookingResult?.id}</strong> {bookingResult?.booking_code ? `(${bookingResult.booking_code})` : ''}</p>
+                <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 14, margin: '14px 0', fontSize: 13, color: '#334155', textAlign: 'left', lineHeight: 1.6 }}>
+                  <div>📧 Chúng tôi đã gửi email xác nhận đặt tour đến: <strong>{contactEmail}</strong></div>
+                  {!user && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #cbd5e1', color: '#047857' }}>
+                      🔑 <strong>Tài khoản đã tạo:</strong> Bạn có thể đăng nhập với email <strong>{contactEmail}</strong> và mật khẩu <strong>123456</strong> để theo dõi chuyến đi!
+                    </div>
+                  )}
+                </div>
                 <div className="bm-success-actions">
-                  <button className="bm-btn-confirm" onClick={() => { setShowModal(false); navigate('/my-bookings'); }}>
-                    Xem lịch sử đặt tour
-                  </button>
+                  {user ? (
+                    <button className="bm-btn-confirm" onClick={() => { setShowModal(false); navigate('/my-bookings'); }}>
+                      Xem lịch sử đặt tour
+                    </button>
+                  ) : (
+                    <>
+                      <button className="bm-btn-confirm" onClick={() => { setShowModal(false); openAuthModal('login'); }}>
+                        🔑 Đăng nhập ngay
+                      </button>
+                      <button className="bm-btn-cancel" onClick={() => { setShowModal(false); navigate('/my-bookings'); }}>
+                        Tra cứu đơn đặt
+                      </button>
+                    </>
+                  )}
                   <button className="bm-btn-cancel" onClick={() => setShowModal(false)}>Đóng</button>
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+
+      {/* ════ CONSULTATION MODAL ════ */}
+      {showConsultModal && (
+        <div className="bm-overlay" onClick={(e) => { if (e.target === e.currentTarget && !consultSubmitting) setShowConsultModal(false); }}>
+          <div className="bm-modal tdp-consult-modal">
+            <div className="bm-header">
+              <div>
+                <h2 className="bm-title" style={{ fontSize: 18, color: '#0f172a' }}>
+                  💬 Yêu cầu tư vấn tour miễn phí
+                </h2>
+                <p style={{ margin: '4px 0 0', fontSize: 12.5, color: '#64748b' }}>
+                  Để lại thông tin, hướng dẫn viên chuyên tuyến sẽ gọi lại hỗ trợ trong 15 phút.
+                </p>
+              </div>
+              <button
+                className="bm-close"
+                disabled={consultSubmitting}
+                onClick={() => setShowConsultModal(false)}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="bm-body">
+              {/* Card thông tin tour đang quan tâm */}
+              <div className="tdp-consult-tour-card">
+                <img
+                  src={tour.thumbnail || '/placeholder-tour.jpg'}
+                  alt={tour.name}
+                  className="tdp-consult-tour-img"
+                  onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?w=200'; }}
+                />
+                <div className="tdp-consult-tour-info">
+                  <div className="tdp-consult-tour-name">{tour.name}</div>
+                  <div className="tdp-consult-tour-meta">
+                    <span>📍 {tour.destination?.name || 'Điểm đến hấp dẫn'}</span>
+                    <span className="tdp-consult-tour-price">
+                      Từ {fmt(effectivePriceAdult)}
+                    </span>
+                  </div>
+                  {tour.guide_name && (
+                    <div className="tdp-consult-guide-badge">
+                      👨‍💼 HDV phụ trách: <strong>{tour.guide_name}</strong>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {consultSuccess ? (
+                <div className="tdp-consult-success-box">
+                  <div className="tdp-consult-success-icon">🎉</div>
+                  <h3 style={{ margin: '0 0 8px', color: '#166534', fontSize: 18 }}>
+                    Gửi yêu cầu tư vấn thành công!
+                  </h3>
+                  <p style={{ color: '#374151', fontSize: 13.5, lineHeight: 1.6, margin: '0 0 16px' }}>
+                    Cảm ơn bạn <strong>{consultName}</strong>! Hướng dẫn viên phụ trách sẽ liên hệ lại với bạn qua số điện thoại <strong style={{ color: '#0284c7' }}>{consultPhone}</strong> trong thời gian sớm nhất.
+                  </p>
+
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, padding: 12, fontSize: 13, color: '#334155', textAlign: 'left', lineHeight: 1.6, marginBottom: 16 }}>
+                    <div>📧 Lịch trình chi tiết và thông tin hỗ trợ đã được gửi tới: <strong>{consultEmail}</strong></div>
+                    {!user && (
+                      <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px dashed #cbd5e1', color: '#047857' }}>
+                        🔑 <strong>Tài khoản tự động:</strong> Bạn có thể đăng nhập bằng email <strong>{consultEmail}</strong> (Mật khẩu: <strong>123456</strong>) để theo dõi các phản hồi và đặt tour ưu đãi!
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="bm-btn-confirm"
+                    style={{ width: '100%', padding: '12px' }}
+                    onClick={() => setShowConsultModal(false)}
+                  >
+                    Đã hiểu, cảm ơn!
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleSubmitConsultation}>
+                  {consultError && (
+                    <div className="bm-error" style={{ marginBottom: 14 }}>
+                      ⚠️ {consultError}
+                    </div>
+                  )}
+
+                  <div className="bm-field">
+                    <label className="bm-label">
+                      Họ và tên khách hàng <span className="bm-req">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      className="bm-input"
+                      placeholder="Ví dụ: Nguyễn Văn A"
+                      value={consultName}
+                      onChange={(e) => setConsultName(e.target.value)}
+                      required
+                      disabled={consultSubmitting}
+                    />
+                  </div>
+
+                  <div className="bm-field">
+                    <label className="bm-label">
+                      Số điện thoại nhận tư vấn <span className="bm-req">*</span>
+                    </label>
+                    <input
+                      type="tel"
+                      className="bm-input"
+                      placeholder="Ví dụ: 0912 345 678"
+                      value={consultPhone}
+                      onChange={(e) => setConsultPhone(e.target.value)}
+                      required
+                      disabled={consultSubmitting}
+                    />
+                  </div>
+
+                  <div className="bm-field">
+                    <label className="bm-label">
+                      Email liên hệ <span className="bm-req">*</span>
+                      <span style={{ fontSize: 11, fontWeight: 'normal', color: '#64748b', marginLeft: 6 }}>
+                        (Nhận lịch trình & tài khoản tra cứu)
+                      </span>
+                    </label>
+                    <input
+                      type="email"
+                      className="bm-input"
+                      placeholder="email@example.com"
+                      value={consultEmail}
+                      onChange={(e) => setConsultEmail(e.target.value)}
+                      required
+                      disabled={consultSubmitting}
+                    />
+                  </div>
+
+                  <div className="bm-field">
+                    <label className="bm-label">
+                      Nội dung bạn đang phân vân hoặc cần tư vấn
+                    </label>
+                    <textarea
+                      className="bm-textarea"
+                      rows={3}
+                      placeholder="Ví dụ: Đoàn tôi 4 người muốn đi cuối tuần sau, có người lớn tuổi có cần lưu ý gì không?..."
+                      value={consultNote}
+                      onChange={(e) => setConsultNote(e.target.value)}
+                      disabled={consultSubmitting}
+                    />
+                  </div>
+
+                  <div style={{ background: '#f8fafc', padding: '10px 12px', borderRadius: 6, fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+                    🔒 Cam kết bảo mật thông tin liên hệ. Cuộc gọi tư vấn hoàn toàn miễn phí 100%.
+                  </div>
+
+                  <div className="bm-actions">
+                    <button
+                      type="button"
+                      className="bm-btn-cancel"
+                      onClick={() => setShowConsultModal(false)}
+                      disabled={consultSubmitting}
+                    >
+                      Hủy bỏ
+                    </button>
+                    <button
+                      type="submit"
+                      className="bm-btn-confirm"
+                      style={{ background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)' }}
+                      disabled={consultSubmitting}
+                    >
+                      {consultSubmitting ? 'Đang gửi...' : '🚀 Gửi yêu cầu tư vấn'}
+                    </button>
+                  </div>
+                </form>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══════ PHOTO GALLERY LIGHTBOX MODAL ══════ */}
+      {lightboxOpen && (
+        <div
+          className="tdp-lightbox-overlay"
+          onClick={() => setLightboxOpen(false)}
+        >
+          <div
+            className="tdp-lightbox-content"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="tdp-lightbox-header">
+              <div className="tdp-lightbox-title">
+                <span className="tdp-lightbox-counter">
+                  🖼️ Ảnh {lightboxIdx + 1} / {imgs.length}
+                </span>
+                <span className="tdp-lightbox-tourname">{tour.name}</span>
+              </div>
+              <button
+                type="button"
+                className="tdp-lightbox-close"
+                onClick={() => setLightboxOpen(false)}
+                aria-label="Đóng bộ sưu tập ảnh"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="tdp-lightbox-stage">
+              <button
+                type="button"
+                className="tdp-lightbox-nav tdp-lightbox-nav--prev"
+                onClick={() => setLightboxIdx((lightboxIdx - 1 + imgs.length) % imgs.length)}
+                aria-label="Ảnh trước"
+              >
+                ‹
+              </button>
+
+              <div className="tdp-lightbox-img-wrap">
+                <img
+                  src={imgs[lightboxIdx]}
+                  alt={`${tour.name} - Ảnh ${lightboxIdx + 1}`}
+                  className="tdp-lightbox-img"
+                  onError={(e) => handleImgError(e, lightboxIdx)}
+                />
+              </div>
+
+              <button
+                type="button"
+                className="tdp-lightbox-nav tdp-lightbox-nav--next"
+                onClick={() => setLightboxIdx((lightboxIdx + 1) % imgs.length)}
+                aria-label="Ảnh tiếp theo"
+              >
+                ›
+              </button>
+            </div>
+
+            <div className="tdp-lightbox-thumbs">
+              {imgs.map((thumbUrl, i) => (
+                <button
+                  type="button"
+                  key={i}
+                  className={`tdp-lightbox-thumb-btn ${i === lightboxIdx ? 'active' : ''}`}
+                  onClick={() => setLightboxIdx(i)}
+                >
+                  <img
+                    src={thumbUrl}
+                    alt={`Thumb ${i + 1}`}
+                    onError={(e) => handleImgError(e, i)}
+                  />
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

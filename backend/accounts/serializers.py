@@ -41,10 +41,22 @@ class RegisterSerializer(serializers.ModelSerializer):
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer thông tin người dùng (profile)."""
+    role = serializers.SerializerMethodField()
+
     class Meta:
         model  = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'phone', 'avatar', 'is_staff', 'is_superuser']
-        read_only_fields = ['id', 'username', 'email', 'is_staff', 'is_superuser']
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'phone', 'avatar', 'is_staff', 'is_superuser', 'role'
+        ]
+        read_only_fields = ['id', 'username', 'email', 'is_staff', 'is_superuser', 'role']
+
+    def get_role(self, obj):
+        if obj.is_superuser:
+            return 'admin'
+        if obj.is_staff:
+            return 'staff'
+        return 'customer'
 
 
 class GoogleAuthSerializer(serializers.Serializer):
@@ -64,6 +76,19 @@ class ChangePasswordSerializer(serializers.Serializer):
         return attrs
 
 
+class GuideSerializer(serializers.ModelSerializer):
+    """Serializer danh sách nhân viên / HDV để gán vào tour."""
+    full_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'full_name']
+
+    def get_full_name(self, obj):
+        name = f"{obj.first_name} {obj.last_name}".strip()
+        return name if name else obj.username
+
+
 class AdminUserListSerializer(serializers.ModelSerializer):
     """Serializer hiển thị thông tin user trong trang quản trị."""
     bookings_count = serializers.IntegerField(read_only=True, default=0)
@@ -79,15 +104,17 @@ class AdminUserListSerializer(serializers.ModelSerializer):
         ]
 
     def get_role(self, obj):
-        if obj.is_superuser or obj.is_staff:
+        if obj.is_superuser:
             return 'admin'
+        if obj.is_staff:
+            return 'staff'
         return 'customer'
 
 
 class AdminUserCreateSerializer(serializers.ModelSerializer):
     """Serializer tạo tài khoản mới bởi Quản trị viên."""
     password = serializers.CharField(write_only=True, required=True, min_length=6)
-    role     = serializers.ChoiceField(choices=['customer', 'admin'], default='customer', write_only=True)
+    role     = serializers.ChoiceField(choices=['customer', 'staff', 'admin'], default='customer', write_only=True)
 
     class Meta:
         model = User
@@ -109,12 +136,13 @@ class AdminUserCreateSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         role         = validated_data.pop('role', 'customer')
         password     = validated_data.pop('password')
-        is_admin     = (role == 'admin')
+        is_staff     = (role in ['admin', 'staff'])
+        is_superuser = (role == 'admin')
 
         user = User.objects.create_user(
             **validated_data,
-            is_staff=is_admin,
-            is_superuser=is_admin
+            is_staff=is_staff,
+            is_superuser=is_superuser
         )
         user.set_password(password)
         user.save()
@@ -122,37 +150,32 @@ class AdminUserCreateSerializer(serializers.ModelSerializer):
 
 
 class AdminUserUpdateSerializer(serializers.ModelSerializer):
-    """Serializer cập nhật thông tin và phân quyền user bởi Quản trị viên."""
-    role = serializers.ChoiceField(choices=['customer', 'admin'], required=False)
+    """
+    Serializer cập nhật người dùng bởi Quản trị viên.
+    Chỉ cho phép phân quyền (role) và thay đổi trạng thái hoạt động (is_active).
+    Các thông tin cá nhân (username, email, họ tên, SĐT) không được phép ghi đè.
+    """
+    role = serializers.ChoiceField(choices=['customer', 'staff', 'admin'], required=False)
 
     class Meta:
         model = User
-        fields = [
-            'first_name', 'last_name', 'phone', 'email',
-            'is_active', 'role'
-        ]
-
-    def validate_email(self, value):
-        user_id = self.instance.pk
-        if value and User.objects.filter(email__iexact=value).exclude(pk=user_id).exists():
-            raise serializers.ValidationError('Email này đã được tài khoản khác sử dụng.')
-        return value.lower() if value else value
+        fields = ['is_active', 'role']
 
     def update(self, instance, validated_data):
         role = validated_data.pop('role', None)
         if role is not None:
-            is_admin = (role == 'admin')
-            instance.is_staff     = is_admin
-            instance.is_superuser = is_admin
+            instance.is_staff     = (role in ['admin', 'staff'])
+            instance.is_superuser = (role == 'admin')
 
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
+        if 'is_active' in validated_data:
+            instance.is_active = validated_data['is_active']
 
         instance.save()
         return instance
 
 
 class AdminResetUserPasswordSerializer(serializers.Serializer):
-    """Serializer đặt lại mật khẩu của người dùng bởi Admin."""
-    new_password = serializers.CharField(required=True, write_only=True, min_length=6)
+    """Serializer đặt lại mật khẩu của người dùng bởi Admin (mặc định 123456 nếu không nhập)."""
+    new_password = serializers.CharField(required=False, allow_blank=True, default='123456', write_only=True, min_length=6)
+
 

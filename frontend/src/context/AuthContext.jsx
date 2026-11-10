@@ -83,8 +83,10 @@ export function AuthProvider({ children }) {
     logout,
     googleLogin,
     isAuthenticated: !!user,
-    isAdmin:   user?.is_superuser,
-    isStaff:   user?.is_staff,
+    isAdmin:   Boolean(user?.is_superuser),
+    isStaff:   Boolean(user?.is_staff && !user?.is_superuser),
+    canAccessAdmin: Boolean(user?.is_superuser || user?.is_staff),
+    role:      user?.role || (user?.is_superuser ? 'admin' : (user?.is_staff ? 'staff' : 'customer')),
     /* modal */
     modalOpen,
     modalDefaultTab,

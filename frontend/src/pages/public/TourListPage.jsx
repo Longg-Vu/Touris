@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { tourAPI, destinationAPI, categoryAPI } from '../../api/services';
+import { useFavorites } from '../../context/FavoritesContext';
 import DatePickerModal, { formatDateKey, formatDisplayDate } from '../../components/common/DatePickerModal';
 import './TourListPage.css';
 
@@ -20,7 +21,7 @@ function TourListPage() {
   const [loading, setLoading] = useState(true);
 
   // Bộ lọc
-  const [selectedCity, setSelectedCity] = useState(searchParams.get('destination') || searchParams.get('search') || '');
+  const [selectedCity, setSelectedCity] = useState(searchParams.get('destination') || searchParams.get('dest') || '');
   const [selectedCategories, setSelectedCategories] = useState(() => {
     const cat = searchParams.get('category');
     return cat ? [cat] : [];
@@ -28,6 +29,7 @@ function TourListPage() {
   const [selectedDateRange, setSelectedDateRange] = useState({ startDate: null, endDate: null });
   const [sortBy, setSortBy] = useState('most_relevant');
   const [searchKeyword, setSearchKeyword] = useState(searchParams.get('search') || '');
+  const [onlySale, setOnlySale] = useState(searchParams.get('on_sale') === 'true' || searchParams.get('sale') === 'true');
 
   // Phân trang
   const [currentPage, setCurrentPage] = useState(1);
@@ -84,7 +86,7 @@ function TourListPage() {
   }, [filterPanelOpen]);
 
   // Reset trang về 1 khi bất kỳ tiêu chí lọc nào thay đổi
-  const prevFiltersRef = useRef({ selectedCity, selectedCategories, sortBy, searchKeyword, selectedDateRange });
+  const prevFiltersRef = useRef({ selectedCity, selectedCategories, sortBy, searchKeyword, selectedDateRange, onlySale });
   useEffect(() => {
     const prev = prevFiltersRef.current;
     if (
@@ -92,24 +94,16 @@ function TourListPage() {
       prev.selectedCategories !== selectedCategories ||
       prev.sortBy !== sortBy ||
       prev.searchKeyword !== searchKeyword ||
+      prev.onlySale !== onlySale ||
       prev.selectedDateRange?.startDate !== selectedDateRange?.startDate ||
       prev.selectedDateRange?.endDate !== selectedDateRange?.endDate
     ) {
       setCurrentPage(1);
-      prevFiltersRef.current = { selectedCity, selectedCategories, sortBy, searchKeyword, selectedDateRange };
+      prevFiltersRef.current = { selectedCity, selectedCategories, sortBy, searchKeyword, selectedDateRange, onlySale };
     }
-  }, [selectedCity, selectedCategories, sortBy, searchKeyword, selectedDateRange]);
+  }, [selectedCity, selectedCategories, sortBy, searchKeyword, selectedDateRange, onlySale]);
 
-  // Danh sách tour yêu thích (lưu trong localStorage)
-  const [favorites, setFavorites] = useState(() => {
-    try {
-      const saved = localStorage.getItem('klook_tour_favorites');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
+  const { isFavorite, toggleFavorite } = useFavorites();
   const filterContainerRef = useRef(null);
 
   // Đóng dropdown khi click ra ngoài
@@ -140,7 +134,21 @@ function TourListPage() {
       .catch((err) => console.warn('Lỗi lấy categories:', err));
   }, []);
 
-  // 2. Tải danh sách Tour khi bộ lọc hoặc trang thay đổi
+  // 2. Đồng bộ URL searchParams với state bộ lọc khi URL thay đổi (VD: bấm điểm đến từ Trang chủ hoặc Back/Forward)
+  useEffect(() => {
+    const dest = searchParams.get('destination') || searchParams.get('dest') || '';
+    const search = searchParams.get('search') || '';
+    const cat = searchParams.get('category');
+    const isSale = searchParams.get('on_sale') === 'true' || searchParams.get('sale') === 'true';
+
+    setSelectedCity(dest);
+    setSearchKeyword(search);
+    setOnlySale(isSale);
+    setSelectedCategories(cat ? [cat] : []);
+    window.scrollTo(0, 0);
+  }, [searchParams]);
+
+  // 3. Tải danh sách Tour khi bộ lọc hoặc trang thay đổi
   useEffect(() => {
     let isMounted = true;
     setLoading(true);
@@ -171,7 +179,7 @@ function TourListPage() {
       if (dest) {
         params.destination = dest.id;
       } else {
-        params.search = selectedCity;
+        params.destination__slug = selectedCity;
       }
     }
 
@@ -189,6 +197,11 @@ function TourListPage() {
       params.ordering = '-rating';
     } else if (sortBy === 'participants') {
       params.ordering = '-review_count';
+    }
+
+    // Lọc tour đang giảm giá
+    if (onlySale) {
+      params.on_sale = 'true';
     }
 
     tourAPI.getAll(params)
@@ -209,22 +222,9 @@ function TourListPage() {
     return () => {
       isMounted = false;
     };
-  }, [currentPage, selectedCity, selectedCategories, sortBy, searchKeyword, selectedDateRange, destinations, categories]);
+  }, [currentPage, selectedCity, selectedCategories, sortBy, searchKeyword, selectedDateRange, onlySale, destinations, categories]);
 
-  // Xử lý click yêu thích
-  const toggleFavorite = (e, tourId) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setFavorites((prev) => {
-      const next = prev.includes(tourId) ? prev.filter((id) => id !== tourId) : [...prev, tourId];
-      try {
-        localStorage.setItem('klook_tour_favorites', JSON.stringify(next));
-      } catch (err) {
-        console.warn('Không thể lưu favorite vào localStorage:', err);
-      }
-      return next;
-    });
-  };
+
 
   // Xóa toàn bộ bộ lọc
   const handleClearAllFilters = () => {
@@ -233,6 +233,7 @@ function TourListPage() {
     setSelectedDateRange({ startDate: null, endDate: null });
     setSortBy('most_relevant');
     setSearchKeyword('');
+    setOnlySale(false);
     setCurrentPage(1);
     setSearchParams({});
   };
@@ -444,6 +445,38 @@ function TourListPage() {
             </div>
 
             <div className="filter-divider" style={{ flexShrink: 0 }}></div>
+
+            {/* Nút lọc nhanh Tour Giảm Giá */}
+            <button
+              type="button"
+              className={`filter-btn ${onlySale ? 'active' : ''}`}
+              onClick={() => {
+                setOnlySale(prev => !prev);
+                setCurrentPage(1);
+              }}
+              style={{
+                flexShrink: 0,
+                color: onlySale ? '#dc2626' : undefined,
+                borderColor: onlySale ? '#f87171' : undefined,
+                backgroundColor: onlySale ? '#fef2f2' : undefined,
+                fontWeight: onlySale ? 600 : undefined
+              }}
+            >
+              <span className="text">⚡ Giảm giá</span>
+              {onlySale && (
+                <span
+                  className="filter-btn-clear"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setOnlySale(false);
+                    setCurrentPage(1);
+                  }}
+                  title="Bỏ lọc giảm giá"
+                >
+                  ✕
+                </span>
+              )}
+            </button>
 
             {/* 3. Thanh cuộn ngang Category Tabs (kiểu klk-tabs Klook) */}
             <div className="klk-tabs">
@@ -673,23 +706,33 @@ function TourListPage() {
           ) : (
             // Danh sách Tour Card
             tours.map((tour) => {
-              const isFav = favorites.includes(tour.id);
+              const isFav = isFavorite(tour.id);
               const category = tour.category_name || tour.category || 'Hoạt động';
               const destination = tour.destination_name || tour.destination || '';
               const tags = Array.isArray(tour.tags) ? tour.tags : [];
               const price = typeof tour.price_adult === 'string' ? parseFloat(tour.price_adult) : (tour.price_adult || 0);
               const reviewCount = tour.review_count || 0;
               const rating = tour.rating || 0;
+              const salePercent = Number(tour.sale_percent) || 0;
+              const isSale = Boolean((tour.is_priority_sale || salePercent > 0) && salePercent > 0);
 
               return (
                 <Link to={`/tours/${tour.id}`} key={tour.id} className="adaptive-card">
                   {/* Ảnh thẻ & nút yêu thích */}
                   <div className="card-img">
                     <img src={tour.thumbnail} alt={tour.name} loading="lazy" />
-                    {tour.is_hot && <div className="card-hot-badge">Hot</div>}
+                    <div className="card-badges-wrapper">
+                      {tour.is_hot ? <div className="card-hot-badge">Hot</div> : null}
+                      {isSale ? (
+                        <div className="card-sale-badge">
+                          ⚡ SALE {salePercent}%
+                        </div>
+                      ) : null}
+                    </div>
                     <button
+                      type="button"
                       className={`favorite-tag ${isFav ? 'is-fav' : ''}`}
-                      onClick={(e) => toggleFavorite(e, tour.id)}
+                      onClick={(e) => toggleFavorite(tour.id, e)}
                       aria-label="Yêu thích"
                     >
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -743,10 +786,22 @@ function TourListPage() {
                     {/* Giá & Khuyến mãi */}
                     <div className="card-price-bottom">
                       <div className="card-price">
-                        <div className="sell-price">
-                          <span className="sell-price-prefix">₫</span>
-                          {formatCurrency(price).replace(' ₫', '')}
-                        </div>
+                        {isSale ? (
+                          <div className="card-price-sale-wrap">
+                            <span className="original-price-strike">
+                              {formatCurrency(price)}
+                            </span>
+                            <div className="sell-price sale-highlight">
+                              <span className="sell-price-prefix">₫</span>
+                              {formatCurrency(tour.sale_price || Math.round(price * (100 - salePercent) / 100)).replace(' ₫', '')}
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="sell-price">
+                            <span className="sell-price-prefix">₫</span>
+                            {formatCurrency(price).replace(' ₫', '')}
+                          </div>
+                        )}
                       </div>
                       {tour.promo && (
                         <div className="promo-tag">

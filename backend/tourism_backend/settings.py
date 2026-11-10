@@ -42,6 +42,7 @@ INSTALLED_APPS = [
     'tours',         # ← App quản lý tour
     'bookings',      # ← App đặt tour & thanh toán
     'reviews',       # ← App đánh giá tour
+    'chat',          # ← App Mini Live Chat & Trợ lý ảo
 ]
 
 MIDDLEWARE = [
@@ -159,3 +160,18 @@ CORS_ALLOWED_ORIGINS = os.environ.get(
 ).split(',')
 
 CORS_ALLOW_CREDENTIALS = True
+
+
+# Email Settings (Gmail SMTP)
+# Nếu có cấu hình EMAIL_HOST_USER và EMAIL_HOST_PASSWORD trong .env thì gửi email thật qua Gmail
+# Nếu chưa có thì tự động ghi log ra console để không gây lỗi kết nối
+EMAIL_BACKEND = os.environ.get(
+    'EMAIL_BACKEND',
+    'django.core.mail.backends.smtp.EmailBackend' if os.environ.get('EMAIL_HOST_USER') else 'django.core.mail.backends.console.EmailBackend'
+)
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER or 'no-reply@tourism.vn')
