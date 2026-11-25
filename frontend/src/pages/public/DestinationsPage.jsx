@@ -45,7 +45,7 @@ const DESTINATION_META = {
 };
 
 const REGION_TABS = [
-  { id: 'all', label: '🇻🇳 Tất cả điểm đến' },
+  { id: 'all', label: ' Tất cả điểm đến' },
   { id: 'north', label: '🏔️ Miền Bắc' },
   { id: 'central', label: '🏖️ Miền Trung & Tây Nguyên' },
   { id: 'south', label: '🌴 Miền Nam & Miền Tây' },
@@ -110,7 +110,7 @@ export default function DestinationsPage() {
         <div className="dest-hero-overlay" />
         <div className="dest-hero-content">
           <span className="dest-hero-badge">🗺️ BẢN ĐỒ DU LỊCH VIỆT NAM</span>
-          <h1>Khám Phá 32 Điểm Đến Nổi Tiếng Nhất</h1>
+          <h1>Khám Phá 32 Điểm Đến Nổi Tiếng Nhất Ở Việt Nam</h1>
           <p>
             Từ những đỉnh núi mây mù Tây Bắc, di sản miền Trung cổ kính đến vùng biển đảo phương Nam rực nắng —
             hãy chọn tọa độ tiếp theo cho hành trình của bạn.

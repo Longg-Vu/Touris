@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { tourAPI } from '../../api/services';
 import { useFavorites } from '../../context/FavoritesContext';
+import { useAuth } from '../../context/AuthContext';
 import './FavoritesPage.css';
 
 function formatCurrency(amount) {
@@ -11,6 +12,7 @@ function formatCurrency(amount) {
 
 export default function FavoritesPage() {
   const { favoriteIds, removeFavorite, clearAllFavorites } = useFavorites();
+  const { isAuthenticated, openAuthModal } = useAuth();
   const [tours, setTours] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showClearModal, setShowClearModal] = useState(false);
@@ -120,13 +122,26 @@ export default function FavoritesPage() {
                 <span className="fav-empty-sparkle">✨</span>
               </div>
             </div>
-            <h2 className="fav-empty-title">Bạn chưa lưu tour nào</h2>
+            <h2 className="fav-empty-title">
+              {isAuthenticated ? 'Bạn chưa lưu tour nào' : 'Vui lòng đăng nhập để lưu tour yêu thích'}
+            </h2>
             <p className="fav-empty-desc">
-              Khám phá các tour du lịch nổi bật, vé tham quan và hoạt động trải nghiệm hấp dẫn để lưu lại chuyến đi trong mơ của bạn ngay hôm nay!
+              {isAuthenticated
+                ? 'Khám phá các tour du lịch nổi bật, vé tham quan và hoạt động trải nghiệm hấp dẫn để lưu lại chuyến đi trong mơ của bạn ngay hôm nay!'
+                : 'Chức năng lưu và đồng bộ danh sách Tour yêu thích dành riêng cho khách hàng đã có tài khoản thành viên. Hãy đăng nhập để lưu giữ những hành trình bạn quan tâm!'}
             </p>
             <div className="fav-empty-actions">
-              <Link to="/tours" className="fav-btn-explore">
-                🗺️ Khám phá các tour nổi bật ngay
+              {!isAuthenticated && (
+                <button
+                  type="button"
+                  className="fav-btn-explore"
+                  onClick={() => openAuthModal && openAuthModal('login')}
+                >
+                  🔐 Đăng nhập ngay
+                </button>
+              )}
+              <Link to="/tours" className={isAuthenticated ? 'fav-btn-explore' : 'fav-btn-home'}>
+                🗺️ Khám phá các tour nổi bật
               </Link>
               <Link to="/" className="fav-btn-home">
                 Về trang chủ

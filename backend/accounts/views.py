@@ -83,34 +83,66 @@ class GoogleLoginView(APIView):
             # pyrefly: ignore [missing-import]
             from google.auth.transport import requests as g_requests
 
-            CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID', '')
+            CLIENT_ID = os.getenv(
+                'GOOGLE_CLIENT_ID',
+                '392835893354-su3glrrmq6vjlncef8bigi24b2fqajm7.apps.googleusercontent.com'
+            ).strip()
             id_info = id_token.verify_oauth2_token(
                 credential,
                 g_requests.Request(),
-                CLIENT_ID,
+                CLIENT_ID or None,
+                clock_skew_in_seconds=10,
             )
 
-            email      = id_info.get('email', '').lower()
-            first_name = id_info.get('given_name', '')
-            last_name  = id_info.get('family_name', '')
-            avatar     = id_info.get('picture', '')
+            email      = id_info.get('email', '').strip().lower()
+            first_name = id_info.get('given_name', '').strip()
+            last_name  = id_info.get('family_name', '').strip()
+            avatar     = id_info.get('picture', '').strip()
 
             if not email:
                 return Response({'error': 'Không lấy được email từ Google.'}, status=400)
 
-            # Lấy hoặc tạo user
-            user, created = User.objects.get_or_create(
-                email=email,
-                defaults={
-                    'username':   email.split('@')[0],
-                    'first_name': first_name,
-                    'last_name':  last_name,
-                    'avatar':     avatar,
-                }
-            )
-            if not created and avatar:
-                user.avatar = avatar
-                user.save(update_fields=['avatar'])
+            # Kiểm tra tài khoản đã tồn tại theo email (không phân biệt hoa thường)
+            existing_user = User.objects.filter(email__iexact=email).first()
+            if existing_user:
+                user = existing_user
+                created = False
+                if not user.is_active:
+                    return Response(
+                        {'error': 'Tài khoản này hiện đang bị khóa. Vui lòng liên hệ quản trị viên.'},
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+                update_fields = []
+                if avatar and user.avatar != avatar:
+                    user.avatar = avatar
+                    update_fields.append('avatar')
+                if first_name and not user.first_name:
+                    user.first_name = first_name
+                    update_fields.append('first_name')
+                if last_name and not user.last_name:
+                    user.last_name = last_name
+                    update_fields.append('last_name')
+                if update_fields:
+                    user.save(update_fields=update_fields)
+            else:
+                # Tự động sinh username duy nhất nếu phần trước @ bị trùng
+                base_uname = email.split('@')[0]
+                uname = base_uname
+                counter = 1
+                while User.objects.filter(username__iexact=uname).exists():
+                    uname = f"{base_uname}{counter}"
+                    counter += 1
+
+                user = User(
+                    username=uname,
+                    email=email,
+                    first_name=first_name,
+                    last_name=last_name,
+                    avatar=avatar,
+                )
+                user.set_unusable_password()
+                user.save()
+                created = True
 
             tokens = get_tokens_for_user(user)
             return Response({

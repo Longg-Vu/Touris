@@ -38,29 +38,28 @@ function saveStoredFavorites(userId, ids) {
 }
 
 export function FavoritesProvider({ children }) {
-  const { user, isAuthenticated, loading: authLoading } = useAuth();
+  const { user, isAuthenticated, loading: authLoading, openAuthModal } = useAuth();
   const currentUserId = isAuthenticated && user?.id ? user.id : null;
 
-  const [favoriteIds, setFavoriteIds] = useState(() => getStoredFavorites(currentUserId));
+  const [favoriteIds, setFavoriteIds] = useState(() => (currentUserId ? getStoredFavorites(currentUserId) : []));
   const [loading, setLoading] = useState(false);
 
-  // Dọn dẹp các key dùng chung cũ để tránh rò rỉ dữ liệu giữa các tài khoản
+  // Dọn dẹp các key dùng chung cũ và key guest để đảm bảo khách vãng lai không lưu được
   useEffect(() => {
     try {
-      LEGACY_KEYS.forEach((k) => localStorage.removeItem(k));
+      [...LEGACY_KEYS, GUEST_STORAGE_KEY].forEach((k) => localStorage.removeItem(k));
     } catch {
       // ignore
     }
   }, []);
 
   // Tải đúng danh sách yêu thích từ Database của tài khoản đang đăng nhập
-  // Hoặc chuyển về danh sách riêng của khách vãng lai khi đăng xuất
+  // Khi chưa đăng nhập hoặc đã đăng xuất: danh sách yêu thích luôn đặt về rỗng
   const syncWithServer = useCallback(async () => {
     if (authLoading) return;
 
     if (!currentUserId) {
-      // Chế độ khách vãng lai: chỉ đọc từ key guest độc lập
-      setFavoriteIds(getStoredFavorites(null));
+      setFavoriteIds([]);
       return;
     }
 
@@ -83,13 +82,13 @@ export function FavoritesProvider({ children }) {
     syncWithServer();
   }, [syncWithServer]);
 
-  // Kiểm tra tour có nằm trong danh sách yêu thích không
+  // Kiểm tra tour có nằm trong danh sách yêu thích không (chỉ khi đã đăng nhập)
   const isFavorite = useCallback((tourId) => {
-    if (!tourId) return false;
+    if (!currentUserId || !tourId) return false;
     return favoriteIds.includes(Number(tourId));
-  }, [favoriteIds]);
+  }, [currentUserId, favoriteIds]);
 
-  // Thêm hoặc bớt tour khỏi danh sách
+  // Thêm hoặc bớt tour khỏi danh sách (Yêu cầu phải đăng nhập tài khoản)
   const toggleFavorite = useCallback(async (tourId, e) => {
     if (e && e.preventDefault) {
       e.preventDefault();
@@ -98,7 +97,15 @@ export function FavoritesProvider({ children }) {
     const idNum = Number(tourId);
     if (!idNum) return;
 
-    // Optimistic UI update: cập nhật state & localStorage của đúng user/guest hiện tại
+    // Khách vãng lai chưa đăng nhập không thể lưu yêu thích -> bật cửa sổ yêu cầu Đăng nhập
+    if (!currentUserId) {
+      if (openAuthModal) {
+        openAuthModal('login');
+      }
+      return;
+    }
+
+    // Optimistic UI update cho tài khoản đã đăng nhập
     setFavoriteIds((prev) => {
       const exists = prev.includes(idNum);
       const next = exists ? prev.filter(id => id !== idNum) : [...prev, idNum];
@@ -106,25 +113,22 @@ export function FavoritesProvider({ children }) {
       return next;
     });
 
-    // Nếu đã đăng nhập, gọi API để lưu vào database của tài khoản đó
-    if (currentUserId) {
-      try {
-        const res = await favoriteAPI.toggle(idNum);
-        if (typeof res.data?.is_favorite === 'boolean') {
-          setFavoriteIds((prev) => {
-            const has = prev.includes(idNum);
-            let next = prev;
-            if (res.data.is_favorite && !has) next = [...prev, idNum];
-            if (!res.data.is_favorite && has) next = prev.filter(id => id !== idNum);
-            saveStoredFavorites(currentUserId, next);
-            return next;
-          });
-        }
-      } catch (err) {
-        console.warn('Lỗi gọi API toggle favorite:', err);
+    try {
+      const res = await favoriteAPI.toggle(idNum);
+      if (typeof res.data?.is_favorite === 'boolean') {
+        setFavoriteIds((prev) => {
+          const has = prev.includes(idNum);
+          let next = prev;
+          if (res.data.is_favorite && !has) next = [...prev, idNum];
+          if (!res.data.is_favorite && has) next = prev.filter(id => id !== idNum);
+          saveStoredFavorites(currentUserId, next);
+          return next;
+        });
       }
+    } catch (err) {
+      console.warn('Lỗi gọi API toggle favorite:', err);
     }
-  }, [currentUserId]);
+  }, [currentUserId, openAuthModal]);
 
   // Xóa 1 tour khỏi danh sách
   const removeFavorite = useCallback(async (tourId, e) => {

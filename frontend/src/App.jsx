@@ -34,8 +34,10 @@ import MiniChatWidget from './components/common/MiniChatWidget';
 
 import './App.css';
 
-// GOOGLE_CLIENT_ID – thay bằng Client ID thật khi có
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+// GOOGLE_CLIENT_ID – lấy từ biến môi trường hoặc fallback Client ID đã cấu hình
+const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  '392835893354-su3glrrmq6vjlncef8bigi24b2fqajm7.apps.googleusercontent.com';
 
 /* Modal renderer – đặt trong AuthProvider để dùng useAuth */
 function AuthModalRenderer() {

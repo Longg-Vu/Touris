@@ -7,6 +7,9 @@ import './AuthModal.css';
 /* ── helpers ─────────────────────────────────────── */
 const TRAVEL_IMAGE =
   'https://images.unsplash.com/photo-1528127269322-539801943592?w=800&q=85';
+const HAS_GOOGLE_CLIENT_ID = Boolean(
+  (import.meta.env.VITE_GOOGLE_CLIENT_ID || '392835893354-su3glrrmq6vjlncef8bigi24b2fqajm7.apps.googleusercontent.com').trim()
+);
 
 /* ── main component ──────────────────────────────── */
 export default function AuthModal({ defaultTab = 'login' }) {
@@ -130,7 +133,8 @@ export default function AuthModal({ defaultTab = 'login' }) {
         navigate('/admin');
       }
     } catch (err) {
-      setGlobalError('Đăng nhập Google thất bại. Vui lòng thử lại.');
+      const errMsg = err?.response?.data?.error || err?.response?.data?.detail;
+      setGlobalError(errMsg || 'Đăng nhập Google thất bại. Vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -194,16 +198,32 @@ export default function AuthModal({ defaultTab = 'login' }) {
 
               {/* Google */}
               <div style={{ marginBottom: 16 }}>
-                <GoogleLogin
-                  onSuccess={handleGoogleSuccess}
-                  onError={handleGoogleError}
-                  text="signin_with"
-                  shape="rectangular"
-                  theme="outline"
-                  size="large"
-                  width="100%"
-                  locale="vi"
-                />
+                {HAS_GOOGLE_CLIENT_ID ? (
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={handleGoogleError}
+                    text="signin_with"
+                    shape="rectangular"
+                    theme="outline"
+                    size="large"
+                    width="100%"
+                    locale="vi"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setGlobalError('Vui lòng điền mã GOOGLE_CLIENT_ID vào file frontend/.env và backend/.env rồi khởi động lại server.')}
+                    style={{
+                      width: '100%', padding: '10px 16px', borderRadius: 6,
+                      border: '1px solid #dadce0', background: '#fff', color: '#3c4043',
+                      fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10
+                    }}
+                  >
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="18" height="18" />
+                    <span>Đăng nhập bằng Google</span>
+                  </button>
+                )}
               </div>
 
               <div className="auth-divider">hoặc đăng nhập bằng email</div>
@@ -274,16 +294,32 @@ export default function AuthModal({ defaultTab = 'login' }) {
 
               {/* Google */}
               <div style={{ marginBottom: 16 }}>
-                <GoogleLogin
-                  onSuccess={handleGoogleSuccess}
-                  onError={handleGoogleError}
-                  text="signup_with"
-                  shape="rectangular"
-                  theme="outline"
-                  size="large"
-                  width="100%"
-                  locale="vi"
-                />
+                {HAS_GOOGLE_CLIENT_ID ? (
+                  <GoogleLogin
+                    onSuccess={handleGoogleSuccess}
+                    onError={handleGoogleError}
+                    text="signup_with"
+                    shape="rectangular"
+                    theme="outline"
+                    size="large"
+                    width="100%"
+                    locale="vi"
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setGlobalError('Vui lòng điền mã GOOGLE_CLIENT_ID vào file frontend/.env và backend/.env rồi khởi động lại server.')}
+                    style={{
+                      width: '100%', padding: '10px 16px', borderRadius: 6,
+                      border: '1px solid #dadce0', background: '#fff', color: '#3c4043',
+                      fontSize: 14, fontWeight: 500, cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10
+                    }}
+                  >
+                    <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" width="18" height="18" />
+                    <span>Đăng ký bằng Google</span>
+                  </button>
+                )}
               </div>
 
               <div className="auth-divider">hoặc đăng ký bằng email</div>

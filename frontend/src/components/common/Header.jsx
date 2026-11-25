@@ -56,7 +56,7 @@ function Header() {
                 aria-label="Menu tài khoản"
               >
                 {user?.avatar
-                  ? <img src={user.avatar} alt={displayName} className="header-avatar-img" />
+                  ? <img src={user.avatar} alt={displayName} className="header-avatar-img" referrerPolicy="no-referrer" />
                   : <span className="header-avatar-initials">{initials}</span>
                 }
                 <span className="header-username">{displayName}</span>
