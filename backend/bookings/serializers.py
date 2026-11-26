@@ -35,96 +35,172 @@ class BookingCreateSerializer(serializers.ModelSerializer):
         return tour
 
     def validate_travel_date(self, value):
-        from datetime import date
-        if value < date.today():
-            raise serializers.ValidationError('Ngày khởi hành phải từ hôm nay trở đi.')
+        from django.utils import timezone
+        today = timezone.localdate()
+        if value < today:
+            raise serializers.ValidationError('Ngày khởi hành không được nằm trong quá khứ.')
         return value
 
     def validate(self, attrs):
-        if attrs.get('num_adults', 1) < 1:
-            raise serializers.ValidationError({'num_adults': 'Phải có ít nhất 1 người lớn.'})
+        import re
+        from datetime import time as dt_time
+        from django.utils import timezone
+
+        tour = attrs.get('tour')
+        travel_date = attrs.get('travel_date')
+        now_local = timezone.localtime()
+        today = now_local.date()
+
+        # Kiểm tra giờ khởi hành trong lịch trình nếu khách chọn ngày đi là hôm nay
+        if travel_date and travel_date == today:
+            dep_hour, dep_min = 8, 0  # Mặc định 08:00 sáng
+            if tour and isinstance(getattr(tour, 'itinerary', None), list) and len(tour.itinerary) > 0:
+                first_time_str = str(tour.itinerary[0].get('time', '') if isinstance(tour.itinerary[0], dict) else '')
+                match_time = re.search(r'\b([01]?\d|2[0-3]):([0-5]\d)\b', first_time_str)
+                if match_time:
+                    dep_hour = int(match_time.group(1))
+                    dep_min = int(match_time.group(2))
+
+            dep_time = dt_time(dep_hour, dep_min)
+            if now_local.time() >= dep_time:
+                dep_fmt = f"{dep_hour:02d}:{dep_min:02d}"
+                raise serializers.ValidationError({
+                    'travel_date': (
+                        f"Chuyến đi ngày hôm nay ({today.strftime('%d/%m/%Y')}) khởi hành lúc {dep_fmt} đã bắt đầu. "
+                        f"Vui lòng chọn ngày khởi hành từ ngày mai trở đi!"
+                    )
+                })
+
+        num_adults = attrs.get('num_adults', 1)
+        num_children = attrs.get('num_children', 0)
+        if num_adults < 1 or num_adults > 50:
+            raise serializers.ValidationError({'num_adults': 'Số lượng người lớn phải từ 1 đến 50 khách mỗi đơn.'})
+        if num_children < 0 or num_children > 50:
+            raise serializers.ValidationError({'num_children': 'Số lượng trẻ em phải từ 0 đến 50 khách mỗi đơn.'})
         if not attrs.get('contact_name', '').strip():
             raise serializers.ValidationError({'contact_name': 'Vui lòng nhập họ và tên liên hệ.'})
-        if not attrs.get('contact_phone', '').strip():
+        phone_raw = attrs.get('contact_phone', '').strip()
+        if not phone_raw:
             raise serializers.ValidationError({'contact_phone': 'Vui lòng nhập số điện thoại liên hệ.'})
+        phone_cleaned = re.sub(r'[\s\.\-]', '', phone_raw)
+        if not re.match(r'^(0|\+84)[0-9]{8,10}$', phone_cleaned):
+            raise serializers.ValidationError({'contact_phone': 'Số điện thoại không hợp lệ (gồm 10 số, bắt đầu bằng 0 hoặc +84).'})
+        attrs['contact_phone'] = phone_cleaned
         if not attrs.get('contact_email', '').strip():
             raise serializers.ValidationError({'contact_email': 'Vui lòng nhập địa chỉ email liên hệ.'})
         return attrs
 
     def create(self, validated_data):
+        from django.db import transaction
+        from django.db.models import Sum
+        from django.db.models.functions import Coalesce
+
         tour = validated_data['tour']
         request = self.context.get('request')
 
-        # Tính giá tại thời điểm đặt (snapshot - áp dụng giá Sale nếu tour đang ưu đãi)
-        price_adult = tour.final_price if (hasattr(tour, 'final_price') and tour.is_priority_sale and (tour.sale_percent or 0) > 0) else tour.price_adult
-        price_child = round(float(price_adult) * 0.7)  # trẻ em = 70% giá người lớn
-
-        num_adults   = validated_data.get('num_adults', 1)
-        num_children = validated_data.get('num_children', 0)
-        total_price  = price_adult * num_adults + price_child * num_children
+        num_adults       = validated_data.get('num_adults', 1)
+        num_children     = validated_data.get('num_children', 0)
+        requested_guests = num_adults + num_children
 
         contact_name  = str(validated_data.get('contact_name', '')).strip()
         contact_phone = str(validated_data.get('contact_phone', '')).strip()
         contact_email = str(validated_data.get('contact_email', '')).strip().lower()
 
-        user = None
         new_account_created = False
         initial_password = '123456'
 
-        if request and hasattr(request, 'user') and request.user.is_authenticated:
-            user = request.user
-            if contact_phone and not user.phone:
-                user.phone = contact_phone
-                user.save(update_fields=['phone'])
-        elif contact_email:
-            # Khách vãng lai: Kiểm tra xem tài khoản email đã tồn tại hay chưa
-            from django.contrib.auth import get_user_model
-            User = get_user_model()
-            existing_user = User.objects.filter(email__iexact=contact_email).first()
-            if existing_user:
-                user = existing_user
+        # ── Khóa bản ghi Tour (Row-level Lock: SELECT ... FOR UPDATE) trong Transaction ──
+        # Giải quyết triệt để Race Condition khi 2 người cùng đặt những chỗ trống cuối cùng:
+        # Request đến sau sẽ phải chờ Request đến trước commit xong rồi mới đọc số chỗ còn lại.
+        with transaction.atomic():
+            locked_tour = Tour.objects.select_for_update().get(pk=tour.pk)
+            if not locked_tour.is_active:
+                raise serializers.ValidationError({'detail': 'Tour này hiện không còn hoạt động.'})
+
+            max_capacity = locked_tour.target_participants or 20
+            agg = (
+                Booking.objects
+                .filter(tour=locked_tour)
+                .exclude(status=Booking.STATUS_CANCELLED)
+                .aggregate(
+                    total_adults=Coalesce(Sum('num_adults'), 0),
+                    total_children=Coalesce(Sum('num_children'), 0),
+                )
+            )
+            current_booked = (agg['total_adults'] or 0) + (agg['total_children'] or 0)
+            remaining_seats = max(0, max_capacity - current_booked)
+
+            if remaining_seats <= 0:
+                raise serializers.ValidationError({
+                    'detail': f'Rất tiếc, tour này vừa hết chỗ ({current_booked}/{max_capacity} khách). Vui lòng chọn tour khác hoặc liên hệ tư vấn!'
+                })
+
+            if requested_guests > remaining_seats:
+                raise serializers.ValidationError({
+                    'detail': f'Rất tiếc, tour này hiện chỉ còn đúng {remaining_seats} chỗ trống (đã nhận {current_booked}/{max_capacity} khách), không đủ cho {requested_guests} khách bạn chọn.'
+                })
+
+            # Tính giá tại thời điểm đặt (snapshot - áp dụng giá Sale nếu tour đang ưu đãi)
+            price_adult = (
+                locked_tour.final_price
+                if (hasattr(locked_tour, 'final_price') and (locked_tour.is_priority_sale or (locked_tour.sale_percent or 0) > 0) and (locked_tour.sale_percent or 0) > 0)
+                else locked_tour.price_adult
+            )
+            price_child = round(float(price_adult) * 0.7)  # trẻ em = 70% giá người lớn
+            total_price = price_adult * num_adults + price_child * num_children
+
+            user = None
+            if request and hasattr(request, 'user') and request.user.is_authenticated:
+                user = request.user
                 if contact_phone and not user.phone:
                     user.phone = contact_phone
                     user.save(update_fields=['phone'])
-            else:
-                # Tự động tạo tài khoản mới cho khách vãng lai để lần sau đăng nhập được
-                try:
-                    base_uname = contact_email.split('@')[0]
-                    uname = base_uname
-                    counter = 1
-                    while User.objects.filter(username__iexact=uname).exists():
-                        uname = f"{base_uname}{counter}"
-                        counter += 1
+            elif contact_email:
+                # Khách vãng lai: Kiểm tra xem tài khoản email đã tồn tại hay chưa
+                from django.contrib.auth import get_user_model
+                User = get_user_model()
+                existing_user = User.objects.filter(email__iexact=contact_email).first()
+                if existing_user:
+                    user = existing_user
+                else:
+                    # Tự động tạo tài khoản mới cho khách vãng lai để lần sau đăng nhập được
+                    try:
+                        base_uname = contact_email.split('@')[0]
+                        uname = base_uname
+                        counter = 1
+                        while User.objects.filter(username__iexact=uname).exists():
+                            uname = f"{base_uname}{counter}"
+                            counter += 1
 
-                    name_parts = contact_name.split()
-                    last_name = name_parts[0] if len(name_parts) > 1 else ''
-                    first_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else contact_name
+                        name_parts = contact_name.split()
+                        last_name = name_parts[0] if len(name_parts) > 1 else ''
+                        first_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else contact_name
 
-                    new_user = User.objects.create_user(
-                        username=uname,
-                        email=contact_email,
-                        first_name=first_name,
-                        last_name=last_name,
-                        phone=contact_phone,
-                    )
-                    new_user.set_password(initial_password)
-                    new_user.save()
-                    user = new_user
-                    new_account_created = True
-                except Exception as ex:
-                    user = None
+                        new_user = User.objects.create_user(
+                            username=uname,
+                            email=contact_email,
+                            first_name=first_name,
+                            last_name=last_name,
+                            phone=contact_phone,
+                        )
+                        new_user.set_password(initial_password)
+                        new_user.save()
+                        user = new_user
+                        new_account_created = True
+                    except Exception:
+                        user = None
 
-        booking = Booking.objects.create(
-            **validated_data,
-            user=user,
-            price_adult=price_adult,
-            price_child=price_child,
-            total_price=total_price,
-            status=Booking.STATUS_PENDING,
-            assigned_guide=tour.guide,  # Mặc định gán HDV chính của tour
-        )
+            booking = Booking.objects.create(
+                **validated_data,
+                user=user,
+                price_adult=price_adult,
+                price_child=price_child,
+                total_price=total_price,
+                status=Booking.STATUS_PENDING,
+                assigned_guide=locked_tour.guide,  # Mặc định gán HDV chính của tour
+            )
 
-        # Gửi email thông báo đặt tour + tài khoản đăng nhập (nếu tạo mới)
+        # Gửi email thông báo đặt tour sau khi đã nhả khóa DB Transaction
         try:
             self.send_booking_confirmation_email(booking, new_account_created, initial_password)
         except Exception:
@@ -390,10 +466,14 @@ class ConsultationCreateSerializer(serializers.ModelSerializer):
         return val
 
     def validate_phone(self, value):
+        import re
         val = str(value).strip()
         if not val:
             raise serializers.ValidationError('Vui lòng nhập số điện thoại để chúng tôi liên hệ tư vấn.')
-        return val
+        cleaned = re.sub(r'[\s\.\-]', '', val)
+        if not re.match(r'^(0|\+84)[0-9]{8,10}$', cleaned):
+            raise serializers.ValidationError('Số điện thoại không hợp lệ (gồm 10 số, bắt đầu bằng 0 hoặc +84).')
+        return cleaned
 
     def validate_email(self, value):
         val = str(value).strip().lower()
@@ -655,4 +735,9 @@ class AdminConsultationUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = ConsultationRequest
         fields = ['status', 'admin_note', 'assigned_to']
+
+    def validate_assigned_to(self, value):
+        if value is not None and not (value.is_staff or value.is_superuser):
+            raise serializers.ValidationError('Chỉ có thể phân công cho Nhân viên / Hướng dẫn viên hoặc Quản trị viên.')
+        return value
 

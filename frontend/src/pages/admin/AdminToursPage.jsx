@@ -8,7 +8,35 @@ import './AdminToursPage.css';
 
 /* ─── Helpers ──────────────────────────────────────────── */
 const fmtVND = (num) =>
-  new Intl.NumberFormat('vi-VN').format(Number(num)) + ' ₫';
+  new Intl.NumberFormat('vi-VN').format(Number(num) || 0) + ' ₫';
+
+// Định dạng số có dấu chấm phân cách hàng nghìn ngay khi nhập (VD: 1500000 -> 1.500.000)
+const formatCurrencyInput = (val) => {
+  const digits = String(val ?? '').replace(/\D/g, '');
+  if (!digits) return '';
+  return new Intl.NumberFormat('vi-VN').format(Number(digits));
+};
+
+// Tách chuỗi giờ "08:00 - 09:30" thành { startTime: "08:00", endTime: "09:30" } cho <input type="time" />
+const parseTimeRange = (timeStr) => {
+  const raw = String(timeStr || '').trim();
+  const matches = raw.match(/\b([01]?\d|2[0-3]):[0-5]\d\b/g);
+  if (!matches || matches.length === 0) {
+    return { startTime: '08:00', endTime: '' };
+  }
+  const pad = (t) => (t.length === 4 ? `0${t}` : t);
+  return {
+    startTime: pad(matches[0]),
+    endTime: matches[1] ? pad(matches[1]) : '',
+  };
+};
+
+const buildTimeRange = (startTime, endTime) => {
+  const s = (startTime || '').trim();
+  const e = (endTime || '').trim();
+  if (s && e) return `${s} - ${e}`;
+  return s || e || '';
+};
 
 const EMPTY_FORM = {
   name:                '',
@@ -36,9 +64,11 @@ function TourFormModal({ tour, categories, destinations, guides = [], isAdmin, c
       ? {
           ...tour,
           guide: tour.guide || '',
-          target_participants: tour.target_participants ?? 20,
+          price_adult: tour.price_adult ? String(Math.round(Number(tour.price_adult))) : '',
+          booked_count: String(tour.booked_count ?? '0').replace(/^-+/, ''),
+          target_participants: Math.max(1, Number(tour.target_participants) || 20),
           tags: Array.isArray(tour.tags) ? tour.tags.join(', ') : '',
-          is_priority_sale: tour.is_priority_sale ?? false,
+          is_priority_sale: Boolean(tour.is_priority_sale || (tour.sale_percent && tour.sale_percent > 0)),
           sale_percent: tour.sale_percent ?? 0,
         }
       : { ...EMPTY_FORM }
@@ -47,14 +77,85 @@ function TourFormModal({ tour, categories, destinations, guides = [], isAdmin, c
   const [highlights, setHighlights] = useState(
     isEdit && Array.isArray(tour.highlights) ? tour.highlights : []
   );
-  const [itinerary, setItinerary] = useState(
-    isEdit && Array.isArray(tour.itinerary) ? tour.itinerary : []
-  );
+  const [itinerary, setItinerary] = useState(() => {
+    if (isEdit && Array.isArray(tour.itinerary)) {
+      return tour.itinerary.map((it) => {
+        const { startTime, endTime } = parseTimeRange(it.time);
+        return {
+          ...it,
+          startTime,
+          endTime,
+          time: buildTimeRange(startTime, endTime) || it.time || '08:00',
+        };
+      });
+    }
+    return [];
+  });
 
   const [loading, setLoading] = useState(false);
+  const [uploadingImg, setUploadingImg] = useState(false);
   const [error, setError]     = useState('');
+  const [saleWarn, setSaleWarn] = useState('');
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+
+  // Xử lý nhập giá tiền có phân cách hàng nghìn (250.000, 1.500.000)
+  const handlePriceChange = (e) => {
+    const rawDigits = e.target.value.replace(/\D/g, '');
+    set('price_adult', rawDigits);
+  };
+
+  // Xử lý nhập % giảm giá (0 - 90%), tự động tính giá sau giảm & chặn > 90% hoặc số âm
+  const handleSalePercentChange = (rawVal) => {
+    const cleaned = String(rawVal ?? '').replace(/[^0-9]/g, '');
+    if (cleaned === '') {
+      setSaleWarn('');
+      setForm((f) => ({
+        ...f,
+        sale_percent: 0,
+        is_priority_sale: false,
+        promo: f.promo && /^Giảm\s+\d+%?$/i.test(f.promo.trim()) ? '' : f.promo,
+      }));
+      return;
+    }
+    let num = parseInt(cleaned, 10);
+    if (num > 90) {
+      setSaleWarn('⚠️ Mức giảm giá tối đa là 90% (không được nhập 100% hoặc lớn hơn). Đã tự động giới hạn về 90%.');
+      num = 90;
+    } else {
+      setSaleWarn('');
+    }
+    setForm((f) => ({
+      ...f,
+      sale_percent: num,
+      is_priority_sale: num > 0,
+      promo: num > 0 ? `Giảm ${num}%` : '',
+    }));
+  };
+
+  // Xử lý tải ảnh đại diện từ máy tính
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Vui lòng chọn file định dạng hình ảnh (.jpg, .png, .webp).');
+      return;
+    }
+    setUploadingImg(true);
+    setError('');
+    try {
+      const res = await adminTourAPI.uploadImage(file);
+      if (res.data?.url) {
+        set('thumbnail', res.data.url);
+      }
+    } catch (err) {
+      const msg = err?.response?.data?.error || 'Không thể tải ảnh lên server.';
+      setError(msg);
+    } finally {
+      setUploadingImg(false);
+      e.target.value = '';
+    }
+  };
 
   const addHighlight = () => {
     setHighlights((prev) => [...prev, { icon: '✨', text: '' }]);
@@ -67,7 +168,25 @@ function TourFormModal({ tour, categories, destinations, guides = [], isAdmin, c
   };
 
   const addItinerary = () => {
-    setItinerary((prev) => [...prev, { time: '', desc: '' }]);
+    setItinerary((prev) => [
+      ...prev,
+      { startTime: '08:00', endTime: '09:30', time: '08:00 - 09:30', desc: '' },
+    ]);
+  };
+  const updateItineraryTime = (idx, which, val) => {
+    setItinerary((prev) =>
+      prev.map((item, i) => {
+        if (i !== idx) return item;
+        const nextStart = which === 'startTime' ? val : (item.startTime || '');
+        const nextEnd = which === 'endTime' ? val : (item.endTime || '');
+        return {
+          ...item,
+          startTime: nextStart,
+          endTime: nextEnd,
+          time: buildTimeRange(nextStart, nextEnd),
+        };
+      })
+    );
   };
   const updateItinerary = (idx, field, val) => {
     setItinerary((prev) => prev.map((item, i) => i === idx ? { ...item, [field]: val } : item));
@@ -80,7 +199,23 @@ function TourFormModal({ tour, categories, destinations, guides = [], isAdmin, c
     e.preventDefault();
     setError('');
     if (!form.name.trim()) { setError('Tên tour không được để trống.'); return; }
-    if (!form.price_adult)  { setError('Vui lòng nhập giá tour.'); return; }
+    const priceNum = Number(String(form.price_adult).replace(/\D/g, ''));
+    if (!priceNum || priceNum <= 0) { setError('Vui lòng nhập giá tour lớn hơn 0 VNĐ.'); return; }
+    const targetNum = Number(form.target_participants);
+    if (!targetNum || targetNum < 1) { setError('Số khách cần / đoàn phải từ 1 người trở lên.'); return; }
+    if (String(form.booked_count).trim().startsWith('-')) {
+      setError('Số lượt đặt không được là số âm.');
+      return;
+    }
+    const salePct = Number(form.sale_percent) || 0;
+    if (salePct < 0 || salePct > 90) {
+      setError('Phần trăm giảm giá chỉ được phép từ 0% đến 90%.');
+      return;
+    }
+    if (!form.thumbnail || !form.thumbnail.trim()) {
+      setError('Vui lòng nhập link ảnh hoặc tải ảnh đại diện cho tour.');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -88,16 +223,19 @@ function TourFormModal({ tour, categories, destinations, guides = [], isAdmin, c
         ...form,
         category:    form.category    || null,
         destination: form.destination || null,
-        price_adult: Number(form.price_adult),
-        booked_count: String(form.booked_count || '0'),
-        target_participants: Number(form.target_participants) || 20,
-        is_priority_sale: Boolean(form.is_priority_sale),
-        sale_percent: form.is_priority_sale ? (Number(form.sale_percent) || 0) : 0,
+        price_adult: priceNum,
+        booked_count: String(form.booked_count || '0').replace(/^-+/, '') || '0',
+        target_participants: Math.max(1, targetNum),
+        is_priority_sale: Boolean(salePct > 0 || form.is_priority_sale),
+        sale_percent: salePct,
+        promo: salePct > 0 ? (form.promo || `Giảm ${salePct}%`) : (form.promo || ''),
         tags: form.tags
           ? form.tags.split(',').map((t) => t.trim()).filter(Boolean)
           : [],
         highlights: highlights.filter((h) => h.text && h.text.trim()),
-        itinerary: itinerary.filter((it) => (it.desc && it.desc.trim()) || (it.time && it.time.trim())),
+        itinerary: itinerary
+          .filter((it) => (it.desc && it.desc.trim()) || (it.time && it.time.trim()))
+          .map(({ time, desc }) => ({ time: time || '08:00', desc: desc || '' })),
       };
       if (isAdmin) {
         payload.guide = form.guide || null;
@@ -187,65 +325,155 @@ function TourFormModal({ tour, categories, destinations, guides = [], isAdmin, c
             </div>
           )}
 
-          {/* Giá */}
+          {/* Giá người lớn (hiển thị phân cách hàng nghìn trực tiếp khi gõ) */}
           <div className="atm-field">
             <label>Giá người lớn (VNĐ) <span>*</span></label>
-            <input
-              type="number"
-              min="0"
-              value={form.price_adult}
-              onChange={(e) => set('price_adult', e.target.value)}
-              placeholder="Ví dụ: 250000"
-            />
+            <div className="atm-price-input-wrap">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={formatCurrencyInput(form.price_adult)}
+                onChange={handlePriceChange}
+                placeholder="Ví dụ: 250.000"
+              />
+              <span className="atm-price-suffix">₫</span>
+            </div>
+            {Number(form.price_adult) > 0 && (
+              <div className="atm-price-hint">
+                {Number(form.sale_percent) > 0 ? (
+                  <>
+                    Giá gốc: <del>{fmtVND(form.price_adult)}</del> ➔ Giá sau giảm (-{form.sale_percent}%):{' '}
+                    <strong style={{ color: '#dc2626' }}>
+                      {fmtVND(Math.round((Number(form.price_adult) * (100 - Number(form.sale_percent))) / 100))}
+                    </strong>
+                  </>
+                ) : (
+                  <>Thành tiền: <strong style={{ color: '#059669' }}>{fmtVND(form.price_adult)}</strong></>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Số lượt đặt */}
+          {/* Mức giảm giá (%) (0 - 90%) - Thay đổi trực tiếp giá tiền của tour */}
+          <div className="atm-field">
+            <label>Giảm giá (%) <small style={{ fontWeight: 400, color: '#64748b' }}>(Tối đa 90%)</small></label>
+            <div className="atm-price-input-wrap">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={form.sale_percent ? String(form.sale_percent) : ''}
+                onChange={(e) => handleSalePercentChange(e.target.value)}
+                placeholder="0 (Nhập từ 1 - 90%)"
+              />
+              <span className="atm-price-suffix">%</span>
+            </div>
+            {saleWarn ? (
+              <div style={{ fontSize: '0.74rem', color: '#dc2626', fontWeight: 600 }}>{saleWarn}</div>
+            ) : Number(form.sale_percent) > 0 ? (
+              <div style={{ fontSize: '0.74rem', color: '#059669', fontWeight: 600 }}>
+                ⚡ Đang áp dụng giảm {form.sale_percent}% trực tiếp vào giá bán
+              </div>
+            ) : null}
+          </div>
+
+          {/* Số lượt đặt (không cho phép nhập số âm -1) */}
           <div className="atm-field">
             <label>Số lượt đặt (hiển thị)</label>
             <input
-              type="text"
-              value={form.booked_count}
-              onChange={(e) => set('booked_count', e.target.value)}
-              placeholder="Ví dụ: 1.2k"
+              type="number"
+              min="0"
+              step="1"
+              value={String(form.booked_count ?? '0').replace(/\D/g, '')}
+              onKeyDown={(e) => {
+                if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault();
+              }}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '');
+                set('booked_count', digits === '' ? '0' : String(Math.max(0, parseInt(digits, 10))));
+              }}
+              placeholder="Ví dụ: 120"
             />
           </div>
 
-          {/* Số khách tiêu chuẩn / đoàn */}
+          {/* Số khách tiêu chuẩn / đoàn (không cho phép nhập <= 0 hoặc số âm) */}
           <div className="atm-field">
             <label>Số khách cần / đoàn (Mục tiêu)</label>
             <input
               type="number"
               min="1"
+              max="500"
+              step="1"
               value={form.target_participants ?? 20}
-              onChange={(e) => set('target_participants', e.target.value)}
+              onKeyDown={(e) => {
+                if (['-', '+', 'e', 'E', '.'].includes(e.key)) e.preventDefault();
+              }}
+              onChange={(e) => {
+                const digits = e.target.value.replace(/\D/g, '');
+                set('target_participants', digits === '' ? '' : Math.max(1, parseInt(digits, 10)));
+              }}
+              onBlur={() => {
+                if (!form.target_participants || Number(form.target_participants) < 1) {
+                  set('target_participants', 1);
+                }
+              }}
               placeholder="Ví dụ: 20"
             />
           </div>
 
-          {/* Thumbnail URL */}
+          {/* Thumbnail URL + Nút Upload ảnh từ máy tính */}
           <div className="atm-field atm-full">
-            <label>URL ảnh thumbnail</label>
-            <input
-              type="text"
-              value={form.thumbnail}
-              onChange={(e) => set('thumbnail', e.target.value)}
-              placeholder="https://..."
-            />
+            <label>Ảnh đại diện Tour (Nhập link URL hoặc tải ảnh từ máy) <span>*</span></label>
+            <div className="atm-thumb-upload-row">
+              <input
+                type="text"
+                value={form.thumbnail}
+                onChange={(e) => set('thumbnail', e.target.value)}
+                placeholder="https://... hoặc bấm nút Tải ảnh từ máy bên cạnh"
+              />
+              <label className="atm-btn-upload-file">
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleImageUpload}
+                  disabled={uploadingImg}
+                  style={{ display: 'none' }}
+                />
+                {uploadingImg ? '⏳ Đang tải...' : '📁 Tải ảnh từ máy'}
+              </label>
+            </div>
             {form.thumbnail && (
               <img className="atm-thumb-preview" src={form.thumbnail} alt="preview"
                 onError={(e) => { e.target.style.display = 'none'; }}
+                onLoad={(e) => { e.target.style.display = 'block'; }}
               />
             )}
           </div>
 
-          {/* Nhãn khuyến mãi */}
+          {/* Nhãn khuyến mãi (Đồng bộ với % giảm giá nếu người dùng gõ số % vào đây) */}
           <div className="atm-field">
-            <label>Nhãn khuyến mãi</label>
+            <label>Nhãn khuyến mãi hiển thị</label>
             <input
               type="text"
               value={form.promo || ''}
-              onChange={(e) => set('promo', e.target.value)}
-              placeholder="Ví dụ: Giảm 20%"
+              onChange={(e) => {
+                const val = e.target.value;
+                set('promo', val);
+                // Nếu người dùng nhập số hoặc "Giảm XX%" vào ô này, tự động đồng bộ sang % giảm giá (tối đa 90%)
+                const matchPct = val.match(/(\d+)/);
+                if (matchPct && (/^\d+%?$/.test(val.trim()) || /giảm|sale/i.test(val))) {
+                  let pct = parseInt(matchPct[1], 10);
+                  if (pct > 90) {
+                    setSaleWarn('⚠️ Mức giảm giá tối đa là 90%. Đã tự động giới hạn về 90%.');
+                    pct = 90;
+                    set('promo', `Giảm 90%`);
+                  } else {
+                    setSaleWarn('');
+                  }
+                  set('sale_percent', pct);
+                  set('is_priority_sale', pct > 0);
+                }
+              }}
+              placeholder="Tự động điền khi nhập % giảm giá (VD: Giảm 20%)"
             />
           </div>
 
@@ -305,7 +533,7 @@ function TourFormModal({ tour, categories, destinations, guides = [], isAdmin, c
             )}
           </div>
 
-          {/* Lịch trình chi tiết (Itinerary) */}
+          {/* Lịch trình chi tiết (Itinerary) - Chọn giờ bằng Time Picker thay vì nhập thủ công */}
           <div className="atm-field atm-full atm-dynamic-section">
             <div className="atm-dynamic-header">
               <span className="atm-dynamic-title">🗺️ Lịch trình chi tiết ({itinerary.length} mốc giờ)</span>
@@ -320,14 +548,24 @@ function TourFormModal({ tour, categories, destinations, guides = [], isAdmin, c
             ) : (
               <div className="atm-dynamic-list">
                 {itinerary.map((it, idx) => (
-                  <div key={idx} className="atm-dynamic-row">
-                    <input
-                      type="text"
-                      className="atm-input-time"
-                      value={it.time}
-                      onChange={(e) => updateItinerary(idx, 'time', e.target.value)}
-                      placeholder="Giờ (vd: 08:00 - 09:30)"
-                    />
+                  <div key={idx} className="atm-dynamic-row atm-itinerary-row">
+                    <div className="atm-time-picker-group" title="Chọn khung giờ bắt đầu và kết thúc">
+                      <input
+                        type="time"
+                        className="atm-input-time-picker"
+                        value={it.startTime || '08:00'}
+                        onChange={(e) => updateItineraryTime(idx, 'startTime', e.target.value)}
+                        aria-label="Giờ bắt đầu"
+                      />
+                      <span className="atm-time-sep">–</span>
+                      <input
+                        type="time"
+                        className="atm-input-time-picker"
+                        value={it.endTime || ''}
+                        onChange={(e) => updateItineraryTime(idx, 'endTime', e.target.value)}
+                        aria-label="Giờ kết thúc (tuỳ chọn)"
+                      />
+                    </div>
                     <input
                       type="text"
                       className="atm-input-desc"
@@ -367,36 +605,17 @@ function TourFormModal({ tour, categories, destinations, guides = [], isAdmin, c
               <span>🔥 Tour Hot</span>
             </label>
             <label className="atm-checkbox">
-              <input type="checkbox" checked={form.is_priority_sale}
+              <input type="checkbox" checked={Boolean(form.is_priority_sale || Number(form.sale_percent) > 0)}
                 onChange={(e) => {
                   const checked = e.target.checked;
-                  set('is_priority_sale', checked);
-                  if (checked && (!form.sale_percent || form.sale_percent === 0)) {
-                    set('sale_percent', 20);
+                  if (checked) {
+                    handleSalePercentChange(form.sale_percent > 0 ? form.sale_percent : 20);
+                  } else {
+                    handleSalePercentChange('');
                   }
                 }} />
-              <span style={{ color: '#ef4444', fontWeight: 600 }}>🚨 Cần đẩy Sale gấp (Kích hoạt Flash Sale)</span>
+              <span style={{ color: '#ef4444', fontWeight: 600 }}>🚨 Kích hoạt Flash Sale giảm giá</span>
             </label>
-            {form.is_priority_sale && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6, marginLeft: 24, flexWrap: 'wrap' }}>
-                <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#dc2626' }}>⚡ Mức giảm Flash Sale:</span>
-                <input
-                  type="number"
-                  min="5"
-                  max="90"
-                  step="5"
-                  value={form.sale_percent || 20}
-                  onChange={(e) => set('sale_percent', Math.max(0, Math.min(90, Number(e.target.value) || 0)))}
-                  style={{ width: 70, padding: '3px 8px', borderRadius: 6, border: '1.5px solid #f87171', fontWeight: 700, color: '#dc2626', background: '#fff' }}
-                />
-                <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#dc2626' }}>%</span>
-                {form.price_adult && (
-                  <span style={{ fontSize: '0.78rem', color: '#64748b' }}>
-                    (Giá sau sale: <strong style={{ color: '#dc2626' }}>{fmtVND(Math.round(form.price_adult * (100 - (form.sale_percent || 20)) / 100))}</strong>)
-                  </span>
-                )}
-              </div>
-            )}
           </div>
 
           {/* Buttons */}
@@ -1258,7 +1477,7 @@ function AdminToursPage() {
                         )}
                       </td>
                       <td className="atp-td-price">
-                        {tour.is_priority_sale && tour.sale_percent > 0 ? (
+                        {(tour.is_priority_sale || tour.sale_percent > 0) && tour.sale_percent > 0 ? (
                           <div>
                             <div style={{ color: '#ef4444', fontWeight: 700 }}>
                               {fmtVND(tour.sale_price || Math.round(tour.price_adult * (100 - tour.sale_percent) / 100))}

@@ -125,10 +125,8 @@ def send_customer_message(request):
 
     # Phân quyền bảo vệ phiên chat:
     if request.user and request.user.is_authenticated:
-        if session.user and session.user != request.user:
-            return Response({'detail': 'Bạn không có quyền gửi tin nhắn vào phiên chat của tài khoản khác.'}, status=403)
-        if session.user is None:
-            session.user = request.user
+        if session.user != request.user:
+            return Response({'detail': 'Bạn không có quyền gửi tin nhắn vào phiên chat này.'}, status=403)
     else:
         if session.user is not None:
             return Response({'detail': 'Phiên chat này thuộc về tài khoản đã đăng nhập.'}, status=403)
@@ -136,10 +134,10 @@ def send_customer_message(request):
     # Cập nhật thông tin khách nếu có truyền thêm
     cust_phone = request.data.get('customer_phone')
     if cust_phone:
-        session.customer_phone = cust_phone.strip()
+        session.customer_phone = str(cust_phone).strip()
     cust_name = request.data.get('customer_name')
     if cust_name:
-        session.customer_name = cust_name.strip()
+        session.customer_name = str(cust_name).strip()
 
     # Cập nhật tour đang xem nếu khách gửi từ trang tour cụ thể
     tour_id = request.data.get('tour_id')
@@ -235,8 +233,12 @@ class AdminChatSessionViewSet(viewsets.ModelViewSet):
         qs = ChatSession.objects.select_related('current_tour', 'assigned_to', 'user')
 
         if not user.is_superuser:
-            # HDV / Staff chỉ thấy chat thuộc tour mình quản lý hoặc được gán
-            qs = qs.filter(Q(assigned_to=user) | Q(current_tour__guide=user))
+            # HDV / Staff thấy chat thuộc tour mình quản lý, được gán cho mình, hoặc chat chung chưa gán ai
+            qs = qs.filter(
+                Q(assigned_to=user)
+                | Q(current_tour__guide=user)
+                | Q(assigned_to__isnull=True, current_tour__isnull=True)
+            )
 
         # Filter theo trạng thái
         status_param = self.request.query_params.get('status')
@@ -262,7 +264,11 @@ class AdminChatSessionViewSet(viewsets.ModelViewSet):
         user = request.user
         qs = ChatSession.objects.all()
         if not user.is_superuser:
-            qs = qs.filter(Q(assigned_to=user) | Q(current_tour__guide=user))
+            qs = qs.filter(
+                Q(assigned_to=user)
+                | Q(current_tour__guide=user)
+                | Q(assigned_to__isnull=True, current_tour__isnull=True)
+            )
 
         all_count = qs.count()
         waiting_count = qs.filter(status=ChatSession.STATUS_WAITING_STAFF).count()

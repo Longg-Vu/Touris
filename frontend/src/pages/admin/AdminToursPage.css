@@ -329,6 +329,87 @@
   object-fit: cover; border-radius: 0.5rem; border: 1px solid #e2e8f0;
 }
 
+.atm-price-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.atm-price-input-wrap input {
+  width: 100%;
+  padding-right: 2rem !important;
+  font-weight: 600;
+}
+.atm-price-suffix {
+  position: absolute;
+  right: 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #64748b;
+  pointer-events: none;
+}
+.atm-price-hint {
+  font-size: 0.76rem;
+  color: #475569;
+  margin-top: 0.1rem;
+  line-height: 1.4;
+}
+
+.atm-thumb-upload-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.atm-thumb-upload-row input[type="text"] {
+  flex: 1;
+}
+.atm-btn-upload-file {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.58rem 0.9rem;
+  background: #eef2ff;
+  color: #4f46e5;
+  border: 1.5px solid #c7d2fe;
+  border-radius: 0.45rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.18s;
+}
+.atm-btn-upload-file:hover {
+  background: #4f46e5;
+  color: #ffffff;
+  border-color: #4f46e5;
+}
+
+.atm-time-picker-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: #ffffff;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 0.45rem;
+  padding: 0.2rem 0.45rem;
+  flex-shrink: 0;
+}
+.atm-input-time-picker {
+  border: none !important;
+  outline: none !important;
+  padding: 0.25rem 0.2rem !important;
+  font-size: 0.82rem !important;
+  font-weight: 600;
+  color: #1e293b;
+  background: transparent !important;
+  cursor: pointer;
+  font-family: inherit;
+}
+.atm-time-sep {
+  color: #94a3b8;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
 /* Checkboxes */
 .atm-checkboxes { display: flex; gap: 1.5rem; flex-wrap: wrap; }
 .atm-checkbox {

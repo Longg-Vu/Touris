@@ -294,10 +294,15 @@ function TourDetailPage() {
 
   /* ── derived values ──────────────────── */
   const effectivePriceAdult = tour
-    ? (tour.is_priority_sale && tour.sale_percent > 0 && tour.sale_price
+    ? ((tour.is_priority_sale || tour.sale_percent > 0) && tour.sale_percent > 0 && tour.sale_price
         ? parseFloat(tour.sale_price)
         : parseFloat(tour.price_adult))
     : 0;
+
+  const maxCapacity = tour?.target_participants || 20;
+  const currentBookedGuests = tour?.current_booked_guests ?? 0;
+  const remainingSeats = tour?.remaining_seats ?? Math.max(0, maxCapacity - currentBookedGuests);
+  const totalSelectedGuests = adults + children;
 
   const totalPrice = tour
     ? (effectivePriceAdult * adults) + (effectivePriceAdult * 0.7 * children)
@@ -323,6 +328,44 @@ function TourDetailPage() {
   const tourItinerary = (tour?.itinerary && Array.isArray(tour.itinerary) && tour.itinerary.length > 0)
     ? tour.itinerary
     : DEFAULT_ITINERARY;
+
+  /* ── Tính giờ khởi hành đầu tiên trong lịch trình & ngày đặt tối thiểu ── */
+  const getDepartureInfo = () => {
+    let depHour = 8;
+    let depMin = 0;
+    if (tourItinerary.length > 0 && tourItinerary[0]?.time) {
+      const m = String(tourItinerary[0].time).match(/\b([01]?\d|2[0-3]):([0-5]\d)\b/);
+      if (m) {
+        depHour = parseInt(m[1], 10);
+        depMin = parseInt(m[2], 10);
+      }
+    }
+    const now = new Date();
+    const pad2 = (n) => String(n).padStart(2, '0');
+    const todayStr = `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`;
+    const isPastTodayDeparture =
+      now.getHours() > depHour || (now.getHours() === depHour && now.getMinutes() >= depMin);
+
+    if (isPastTodayDeparture) {
+      const tomorrow = new Date(now);
+      tomorrow.setDate(now.getDate() + 1);
+      const tomorrowStr = `${tomorrow.getFullYear()}-${pad2(tomorrow.getMonth() + 1)}-${pad2(tomorrow.getDate())}`;
+      return {
+        minDate: tomorrowStr,
+        todayStr,
+        isPastTodayDeparture: true,
+        depTimeStr: `${pad2(depHour)}:${pad2(depMin)}`,
+      };
+    }
+    return {
+      minDate: todayStr,
+      todayStr,
+      isPastTodayDeparture: false,
+      depTimeStr: `${pad2(depHour)}:${pad2(depMin)}`,
+    };
+  };
+
+  const { minDate: minBookingDate, todayStr: localTodayStr, isPastTodayDeparture, depTimeStr } = getDepartureInfo();
 
   /* ── loading / error ─────────────────── */
   if (loading) return (
@@ -833,20 +876,39 @@ function TourDetailPage() {
           <div className="tdp-widget-body">
             {/* Date */}
             <div className="tdp-widget-field">
-              <label className="tdp-widget-label" htmlFor="tdp-date">📅 Chọn ngày</label>
+              <label className="tdp-widget-label" htmlFor="tdp-date">📅 Chọn ngày khởi hành</label>
               <input
                 id="tdp-date"
                 type="date"
                 className="tdp-widget-input"
                 value={date}
-                min={new Date().toISOString().slice(0, 10)}
+                min={minBookingDate}
                 onChange={e => setDate(e.target.value)}
               />
+              {isPastTodayDeparture && (
+                <div style={{ fontSize: 11.5, color: '#d97706', marginTop: 5, fontWeight: 500, lineHeight: 1.4 }}>
+                  ⏰ Đã qua giờ khởi hành hôm nay ({depTimeStr}). Hệ thống nhận đặt chỗ từ ngày mai.
+                </div>
+              )}
             </div>
 
             {/* Guests */}
             <div className="tdp-widget-field">
-              <label className="tdp-widget-label">👤 Số khách</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                <label className="tdp-widget-label" style={{ marginBottom: 0 }}>👤 Số khách</label>
+                <span style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: 999,
+                  background: remainingSeats <= 0 ? '#fee2e2' : (remainingSeats <= 5 ? '#fef3c7' : '#dcfce7'),
+                  color: remainingSeats <= 0 ? '#dc2626' : (remainingSeats <= 5 ? '#d97706' : '#15803d'),
+                }}>
+                  {remainingSeats <= 0
+                    ? `🚫 Đã hết chỗ (${currentBookedGuests}/${maxCapacity})`
+                    : `🎫 Còn ${remainingSeats}/${maxCapacity} chỗ trống`}
+                </span>
+              </div>
               <div className="tdp-guest-row">
                 <div>
                   <div className="tdp-guest-type">Người lớn</div>
@@ -855,7 +917,12 @@ function TourDetailPage() {
                 <div className="tdp-guest-controls">
                   <button className="tdp-guest-btn" id="tdp-adults-dec" onClick={() => setAdults(a => Math.max(1, a - 1))} disabled={adults <= 1}>−</button>
                   <span className="tdp-guest-count">{adults}</span>
-                  <button className="tdp-guest-btn" id="tdp-adults-inc" onClick={() => setAdults(a => Math.min(20, a + 1))}>+</button>
+                  <button
+                    className="tdp-guest-btn"
+                    id="tdp-adults-inc"
+                    onClick={() => setAdults(a => Math.min(Math.max(1, remainingSeats - children), a + 1))}
+                    disabled={remainingSeats > 0 ? totalSelectedGuests >= remainingSeats : true}
+                  >+</button>
                 </div>
               </div>
               <div className="tdp-guest-row">
@@ -866,7 +933,12 @@ function TourDetailPage() {
                 <div className="tdp-guest-controls">
                   <button className="tdp-guest-btn" id="tdp-children-dec" onClick={() => setChildren(c => Math.max(0, c - 1))} disabled={children <= 0}>−</button>
                   <span className="tdp-guest-count">{children}</span>
-                  <button className="tdp-guest-btn" id="tdp-children-inc" onClick={() => setChildren(c => Math.min(20, c + 1))}>+</button>
+                  <button
+                    className="tdp-guest-btn"
+                    id="tdp-children-inc"
+                    onClick={() => setChildren(c => Math.min(Math.max(0, remainingSeats - adults), c + 1))}
+                    disabled={remainingSeats > 0 ? totalSelectedGuests >= remainingSeats : true}
+                  >+</button>
                 </div>
               </div>
             </div>
@@ -894,10 +966,29 @@ function TourDetailPage() {
             <button
               id="tdp-btn-book"
               className="tdp-btn-book"
+              disabled={remainingSeats <= 0}
+              style={remainingSeats <= 0 ? { opacity: 0.6, cursor: 'not-allowed', background: '#94a3b8' } : undefined}
               onClick={() => {
+                if (remainingSeats <= 0) {
+                  alert('Rất tiếc, tour này đã đủ số lượng khách tối đa!');
+                  return;
+                }
+                if (totalSelectedGuests > remainingSeats) {
+                  alert(`Tour hiện chỉ còn ${remainingSeats} chỗ trống!`);
+                  return;
+                }
                 /* Kiểm tra chọn ngày trước */
                 if (!date) {
                   alert('Vui lòng chọn ngày khởi hành!');
+                  return;
+                }
+                if (date < minBookingDate) {
+                  if (date === localTodayStr && isPastTodayDeparture) {
+                    alert(`Chuyến đi hôm nay khởi hành lúc ${depTimeStr} đã bắt đầu. Vui lòng chọn từ ngày mai trở đi!`);
+                  } else {
+                    alert('Ngày khởi hành không hợp lệ. Vui lòng chọn lại ngày!');
+                  }
+                  setDate(minBookingDate);
                   return;
                 }
                 // Pre-fill từ profile user nếu đã đăng nhập, hoặc lấy thông tin khách gần nhất từ localStorage
@@ -1097,33 +1188,17 @@ function TourDetailPage() {
                         setBookingResult(res.data);
                         setPayMethod('bank_transfer');
                         setPayError('');
+                        // Cập nhật lại số chỗ trống mới nhất của tour ngay sau khi đặt
+                        tourAPI.getById(id).then(r => setTour(r.data)).catch(() => {});
 
-                        // Lưu vào localStorage cho khách vãng lai
+                        // Lưu thông tin liên hệ gần nhất (không lưu danh sách đơn vào localStorage để bảo mật)
                         try {
                           localStorage.setItem('guest_contact', JSON.stringify({
                             name: contactName.trim(),
                             phone: contactPhone.trim(),
                             email: contactEmail.trim(),
                           }));
-
-                          const existing = JSON.parse(localStorage.getItem('guest_bookings') || '[]');
-                          const newItem = {
-                            id: res.data.id,
-                            booking_code: res.data.booking_code,
-                            tour: tour.id,
-                            tour_title: tour.name,
-                            tour_thumbnail: tour.thumbnail,
-                            travel_date: date,
-                            total_price: res.data.total_price || totalPrice,
-                            num_adults: adults,
-                            num_children: children,
-                            status: res.data.status || 'pending',
-                            contact_name: contactName.trim(),
-                            contact_phone: contactPhone.trim(),
-                            contact_email: contactEmail.trim(),
-                            created_at: new Date().toISOString(),
-                          };
-                          localStorage.setItem('guest_bookings', JSON.stringify([newItem, ...existing.filter(b => b.id !== res.data.id)]));
+                          localStorage.removeItem('guest_bookings');
                         } catch {
                           // ignore storage errors
                         }
@@ -1358,9 +1433,16 @@ function TourDetailPage() {
                     <button
                       className="bm-btn-confirm"
                       style={{ flex: 1, padding: '11px 16px', fontSize: 14 }}
-                      onClick={() => { setShowModal(false); navigate('/my-bookings'); }}
+                      onClick={() => {
+                        setShowModal(false);
+                        if (user) {
+                          navigate('/my-bookings');
+                        } else {
+                          openAuthModal('login');
+                        }
+                      }}
                     >
-                      📋 Xem chi tiết đơn đặt
+                      {user ? '📋 Xem chi tiết đơn đặt' : '🔑 Đăng nhập để quản lý đơn'}
                     </button>
                   </div>
                   <button
@@ -1411,14 +1493,9 @@ function TourDetailPage() {
                       Xem lịch sử đặt tour
                     </button>
                   ) : (
-                    <>
-                      <button className="bm-btn-confirm" onClick={() => { setShowModal(false); openAuthModal('login'); }}>
-                        🔑 Đăng nhập ngay
-                      </button>
-                      <button className="bm-btn-cancel" onClick={() => { setShowModal(false); navigate('/my-bookings'); }}>
-                        Tra cứu đơn đặt
-                      </button>
-                    </>
+                    <button className="bm-btn-confirm" onClick={() => { setShowModal(false); openAuthModal('login'); }}>
+                      🔑 Đăng nhập để quản lý đơn
+                    </button>
                   )}
                   <button className="bm-btn-cancel" onClick={() => setShowModal(false)}>Đóng</button>
                 </div>

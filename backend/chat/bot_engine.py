@@ -60,8 +60,25 @@ def process_customer_message(session, customer_text):
     """
     text_lower = customer_text.strip().lower()
 
-    # 1. Khách hỏi về Sale / Giảm giá / Khuyến mãi / Tour hot
-    if any(kw in text_lower for kw in ['giảm giá', 'sale', 'ưu đãi', 'khuyến mãi', 'rẻ', 'hot', 'tour hot', 'deal']):
+    # 1. Khách hỏi về Giá vé trẻ em / em bé / độ tuổi (Kiểm tra TRƯỚC nhánh Sale vì chữ 'trẻ' chứa 'rẻ')
+    if any(kw in text_lower for kw in ['trẻ em', 'em bé', 'trẻ con', 'nhi đồng', 'độ tuổi', 'vé trẻ']):
+        reply_text = (
+            "👶 **Chính sách giá vé trẻ em tại Tourism Vietnam:**\n\n"
+            "• **Dưới 3 tuổi:** Hoàn toàn **MIỄN PHÍ 100%** (ngồi chung ghế và ăn chung với bố mẹ).\n"
+            "• **Từ 3 – 11 tuổi:** Tính **70% giá người lớn** (có chỗ ngồi riêng, suất ăn và vé tham quan đầy đủ).\n"
+            "• **Từ 12 tuổi trở lên:** Tính như vé người lớn tiêu chuẩn.\n\n"
+            "💡 Nếu đoàn có nhiều trẻ em hoặc cần hỗ trợ đặc biệt (xe đẩy, nôi em bé...), bạn có thể nhắn lại để HDV chuẩn bị trước nhé!"
+        )
+        ChatMessage.objects.create(
+            session=session,
+            sender_type=ChatMessage.SENDER_BOT,
+            message=reply_text,
+            message_type='text',
+        )
+        return
+
+    # 2. Khách hỏi về Sale / Giảm giá / Khuyến mãi / Tour hot
+    if any(kw in text_lower for kw in ['giảm giá', 'sale', 'ưu đãi', 'khuyến mãi', 'giá rẻ', 'tour rẻ', 'tour hot', 'đang hot', 'deal']):
         # Lấy các tour đang có ưu đãi
         sale_tours = list(Tour.objects.filter(is_active=True, is_priority_sale=True).select_related('destination')[:4])
         if len(sale_tours) < 4:
@@ -93,23 +110,6 @@ def process_customer_message(session, customer_text):
             message=reply_text,
             message_type='tours_carousel',
             metadata={'tours': tours_data}
-        )
-        return
-
-    # 2. Khách hỏi về Giá vé trẻ em / em bé / độ tuổi
-    if any(kw in text_lower for kw in ['trẻ em', 'em bé', 'trẻ con', 'bé', 'độ tuổi', 'nhi đồng']):
-        reply_text = (
-            "👶 **Chính sách giá vé trẻ em tại Tourism Vietnam:**\n\n"
-            "• **Dưới 3 tuổi:** Hoàn toàn **MIỄN PHÍ 100%** (ngồi chung ghế và ăn chung với bố mẹ).\n"
-            "• **Từ 3 – 11 tuổi:** Tính **70% giá người lớn** (có chỗ ngồi riêng, suất ăn và vé tham quan đầy đủ).\n"
-            "• **Từ 12 tuổi trở lên:** Tính như vé người lớn tiêu chuẩn.\n\n"
-            "💡 Nếu đoàn có nhiều trẻ em hoặc cần hỗ trợ đặc biệt (xe đẩy, nôi em bé...), bạn có thể nhắn lại để HDV chuẩn bị trước nhé!"
-        )
-        ChatMessage.objects.create(
-            session=session,
-            sender_type=ChatMessage.SENDER_BOT,
-            message=reply_text,
-            message_type='text',
         )
         return
 
@@ -172,9 +172,10 @@ def process_customer_message(session, customer_text):
         return
 
     # 6. Các câu hỏi tự do khác (Free-form inquiry)
-    # Nếu nhân viên / HDV đã nhận ca và đang chat trực tiếp (STATUS_ACTIVE),
-    # Bot không chen ngang nữa để cuộc trò chuyện diễn ra tự nhiên giữa người với người.
-    if session.status == ChatSession.STATUS_ACTIVE:
+    # Chỉ khi nhân viên / HDV đã thực sự tham gia trả lời trong phiên này,
+    # Bot mới ngừng trả lời tự động để cuộc trò chuyện diễn ra tự nhiên giữa người với người.
+    has_staff_replied = session.messages.filter(sender_type=ChatMessage.SENDER_STAFF).exists()
+    if session.status == ChatSession.STATUS_ACTIVE and has_staff_replied:
         session.unread_staff_count += 1
         session.save(update_fields=['unread_staff_count', 'updated_at'])
         return

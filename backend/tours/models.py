@@ -145,7 +145,7 @@ class Tour(models.Model):
 
     @property
     def final_price(self):
-        if self.is_priority_sale and self.sale_percent > 0:
+        if (self.is_priority_sale or self.sale_percent > 0) and self.sale_percent > 0:
             discount = (self.price_adult * self.sale_percent) / 100
             return round(self.price_adult - discount)
         return self.price_adult
@@ -225,12 +225,27 @@ class Favorite(models.Model):
 
 
 # Tự động đồng bộ số lượng tour (tour_count) của Destination khi Tour được thêm, sửa hoặc xóa
-from django.db.models.signals import post_save, post_delete
+from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
+
+
+@receiver(pre_save, sender=Tour)
+def capture_previous_destination_on_tour(sender, instance, **kwargs):
+    if instance.pk:
+        old_dest_id = Tour.objects.filter(pk=instance.pk).values_list('destination_id', flat=True).first()
+        instance._old_destination_id = old_dest_id
+    else:
+        instance._old_destination_id = None
 
 
 @receiver([post_save, post_delete], sender=Tour)
 def update_destination_tour_count_on_change(sender, instance, **kwargs):
-    if instance.destination:
-        instance.destination.tour_count = instance.destination.tours.filter(is_active=True).count()
-        instance.destination.save(update_fields=['tour_count'])
+    dest_ids = set()
+    if instance.destination_id:
+        dest_ids.add(instance.destination_id)
+    old_dest_id = getattr(instance, '_old_destination_id', None)
+    if old_dest_id:
+        dest_ids.add(old_dest_id)
+    for dest in Destination.objects.filter(id__in=dest_ids):
+        dest.tour_count = dest.tours.filter(is_active=True).count()
+        dest.save(update_fields=['tour_count'])

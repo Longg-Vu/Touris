@@ -288,10 +288,11 @@ class AdminTourViewSet(viewsets.ModelViewSet):
                 qs = qs.filter(id__in=next_month_tour_ids)
 
             elif time_filter == 'completed':
-                # Tour đã hoàn thành trong quá khứ
+                # Tour đã hoàn thành trong quá khứ (chỉ tính đơn đã hoàn thành hoặc đã xác nhận và qua ngày đi)
                 completed_tour_ids = Booking.objects.filter(
-                    Q(status=Booking.STATUS_COMPLETED) | Q(travel_date__lt=today)
-                ).exclude(status=Booking.STATUS_CANCELLED).values_list('tour_id', flat=True).distinct()
+                    Q(status=Booking.STATUS_COMPLETED)
+                    | Q(status=Booking.STATUS_CONFIRMED, travel_date__lt=today)
+                ).values_list('tour_id', flat=True).distinct()
                 qs = qs.filter(id__in=completed_tour_ids)
 
         return qs
@@ -413,11 +414,12 @@ class AdminTourViewSet(viewsets.ModelViewSet):
         )
         next_month_tour_count = next_month_bookings.values('tour_id').distinct().count()
 
-        # Tour đã hoàn thành
+        # Tour đã hoàn thành (chỉ tính đơn completed hoặc confirmed đã qua ngày khởi hành)
         completed_bookings = bookings_qs.filter(
             tour_id__in=my_tour_ids
         ).filter(
-            Q(status=Booking.STATUS_COMPLETED) | Q(travel_date__lt=today)
+            Q(status=Booking.STATUS_COMPLETED)
+            | Q(status=Booking.STATUS_CONFIRMED, travel_date__lt=today)
         )
         completed_tour_count = completed_bookings.values('tour_id').distinct().count()
 
@@ -510,6 +512,35 @@ class AdminTourViewSet(viewsets.ModelViewSet):
             },
             'bookings': booking_items
         })
+
+    @action(detail=False, methods=['post'], url_path='upload-image')
+    def upload_image(self, request):
+        """
+        POST /api/tours/admin/tours/upload-image/
+        Tải ảnh đại diện tour từ máy tính lên server (lưu vào MEDIA_ROOT/tours/)
+        và trả về URL đầy đủ để gán vào trường thumbnail.
+        """
+        import os
+        import uuid
+        from django.conf import settings
+        from django.core.files.storage import default_storage
+
+        file_obj = request.FILES.get('image') or request.FILES.get('file')
+        if not file_obj:
+            return Response({'error': 'Vui lòng chọn một file ảnh để tải lên.'}, status=400)
+
+        ext = os.path.splitext(file_obj.name)[1].lower()
+        if ext not in ['.jpg', '.jpeg', '.png', '.webp', '.gif']:
+            return Response({'error': 'Chỉ hỗ trợ định dạng ảnh (.jpg, .jpeg, .png, .webp, .gif).'}, status=400)
+
+        if file_obj.size > 8 * 1024 * 1024:
+            return Response({'error': 'Kích thước ảnh tối đa là 8MB.'}, status=400)
+
+        filename = f"tours/{uuid.uuid4().hex[:12]}{ext}"
+        saved_path = default_storage.save(filename, file_obj)
+        media_url = f"{settings.MEDIA_URL}{saved_path}".replace('\\', '/')
+        full_url = request.build_absolute_uri(media_url)
+        return Response({'url': full_url, 'message': 'Tải ảnh lên thành công!'})
 
     @action(detail=True, methods=['post'], url_path='alert-sale')
     def alert_sale(self, request, pk=None):
@@ -713,6 +744,9 @@ class FavoriteViewSet(viewsets.ModelViewSet):
             tour__is_active=True
         ).select_related('tour__category', 'tour__destination', 'tour__guide')
 
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
     @action(detail=False, methods=['get'], url_path='ids')
     def get_favorite_ids(self, request):
         """Lấy mảng IDs các tour người dùng đã lưu tim."""
@@ -726,11 +760,11 @@ class FavoriteViewSet(viewsets.ModelViewSet):
     def toggle_favorite(self, request):
         """Thêm hoặc gỡ tour khỏi danh sách yêu thích."""
         tour_id = request.data.get('tour_id')
-        if not tour_id:
-            return Response({'detail': 'tour_id là bắt buộc.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not tour_id or not str(tour_id).isdigit():
+            return Response({'detail': 'tour_id hợp lệ là bắt buộc.'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            tour = Tour.objects.get(pk=tour_id, is_active=True)
+            tour = Tour.objects.get(pk=int(tour_id), is_active=True)
         except Tour.DoesNotExist:
             return Response({'detail': 'Tour không tồn tại hoặc đã ngừng hoạt động.'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -755,9 +789,11 @@ class FavoriteViewSet(viewsets.ModelViewSet):
         """Hợp nhất các tour từ localStorage khi khách đăng nhập."""
         tour_ids = request.data.get('tour_ids', [])
         if isinstance(tour_ids, list) and tour_ids:
-            valid_tours = Tour.objects.filter(id__in=tour_ids, is_active=True)
-            for tour in valid_tours:
-                Favorite.objects.get_or_create(user=request.user, tour=tour)
+            clean_ids = [int(x) for x in tour_ids if str(x).isdigit()]
+            if clean_ids:
+                valid_tours = Tour.objects.filter(id__in=clean_ids, is_active=True)
+                for tour in valid_tours:
+                    Favorite.objects.get_or_create(user=request.user, tour=tour)
 
         current_favorites = list(Favorite.objects.filter(
             user=request.user,

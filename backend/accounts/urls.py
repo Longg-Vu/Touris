@@ -1,6 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
+from .serializers import EmailOrUsernameTokenObtainPairSerializer
 from .views import (
     RegisterView, ProfileView, GoogleLoginView, ChangePasswordView,
     AdminUserViewSet
@@ -16,8 +17,8 @@ urlpatterns = [
     # Đăng ký tài khoản mới
     path('register/', RegisterView.as_view(), name='auth-register'),
 
-    # Đăng nhập bằng username/password → trả về access + refresh token
-    path('login/', TokenObtainPairView.as_view(), name='auth-login'),
+    # Đăng nhập bằng username hoặc email + password → trả về access + refresh token
+    path('login/', TokenObtainPairView.as_view(serializer_class=EmailOrUsernameTokenObtainPairSerializer), name='auth-login'),
 
     # Làm mới access token bằng refresh token
     path('refresh/', TokenRefreshView.as_view(), name='auth-refresh'),

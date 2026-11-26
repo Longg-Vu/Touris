@@ -1,8 +1,25 @@
 from rest_framework import serializers
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
+import re
 
 User = get_user_model()
+PHONE_REGEX = re.compile(r'^(0|\+84)[0-9]{8,10}$')
+
+
+class EmailOrUsernameTokenObtainPairSerializer(TokenObtainPairSerializer):
+    """Cho phép đăng nhập bằng cả Username hoặc Email."""
+    def validate(self, attrs):
+        login_input = str(attrs.get(self.username_field, '')).strip()
+        if login_input and not User.objects.filter(username=login_input).exists():
+            matched_user = (
+                User.objects.filter(email__iexact=login_input).first()
+                or User.objects.filter(username__iexact=login_input).first()
+            )
+            if matched_user:
+                attrs[self.username_field] = matched_user.username
+        return super().validate(attrs)
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -26,6 +43,14 @@ class RegisterSerializer(serializers.ModelSerializer):
     def validate_username(self, value):
         if User.objects.filter(username__iexact=value).exists():
             raise serializers.ValidationError('Tên đăng nhập này đã tồn tại.')
+        return value
+
+    def validate_phone(self, value):
+        if value:
+            cleaned = re.sub(r'[\s\.\-]', '', str(value).strip())
+            if not PHONE_REGEX.match(cleaned):
+                raise serializers.ValidationError('Số điện thoại không hợp lệ (gồm 10 số, bắt đầu bằng 0 hoặc +84).')
+            return cleaned
         return value
 
     def validate(self, attrs):
@@ -57,6 +82,14 @@ class UserSerializer(serializers.ModelSerializer):
         if obj.is_staff:
             return 'staff'
         return 'customer'
+
+    def validate_phone(self, value):
+        if value:
+            cleaned = re.sub(r'[\s\.\-]', '', str(value).strip())
+            if not PHONE_REGEX.match(cleaned):
+                raise serializers.ValidationError('Số điện thoại không hợp lệ (gồm 10 số, bắt đầu bằng 0 hoặc +84).')
+            return cleaned
+        return value
 
 
 class GoogleAuthSerializer(serializers.Serializer):
@@ -110,6 +143,14 @@ class AdminUserListSerializer(serializers.ModelSerializer):
             return 'staff'
         return 'customer'
 
+    def validate_phone(self, value):
+        if value:
+            cleaned = re.sub(r'[\s\.\-]', '', str(value).strip())
+            if not PHONE_REGEX.match(cleaned):
+                raise serializers.ValidationError('Số điện thoại không hợp lệ (gồm 10 số, bắt đầu bằng 0 hoặc +84).')
+            return cleaned
+        return value
+
 
 class AdminUserCreateSerializer(serializers.ModelSerializer):
     """Serializer tạo tài khoản mới bởi Quản trị viên."""
@@ -131,6 +172,14 @@ class AdminUserCreateSerializer(serializers.ModelSerializer):
     def validate_username(self, value):
         if User.objects.filter(username__iexact=value).exists():
             raise serializers.ValidationError('Tên đăng nhập này đã tồn tại.')
+        return value
+
+    def validate_phone(self, value):
+        if value:
+            cleaned = re.sub(r'[\s\.\-]', '', str(value).strip())
+            if not PHONE_REGEX.match(cleaned):
+                raise serializers.ValidationError('Số điện thoại không hợp lệ (gồm 10 số, bắt đầu bằng 0 hoặc +84).')
+            return cleaned
         return value
 
     def create(self, validated_data):
@@ -160,6 +209,27 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['is_active', 'role']
+
+    def validate(self, attrs):
+        request = self.context.get('request')
+        instance = self.instance
+        if instance:
+            new_role = attrs.get('role')
+            new_active = attrs.get('is_active', instance.is_active)
+
+            # Không cho Admin tự hạ quyền hoặc tự khóa tài khoản của chính mình
+            if request and request.user and request.user.pk == instance.pk:
+                if new_role is not None and new_role != 'admin':
+                    raise serializers.ValidationError({'role': 'Bạn không thể tự hạ quyền Quản trị viên của chính mình!'})
+                if new_active is False:
+                    raise serializers.ValidationError({'is_active': 'Bạn không thể tự khóa tài khoản của chính mình!'})
+
+            # Không cho phép hệ thống mất Admin đang hoạt động cuối cùng
+            if instance.is_superuser and (new_role in ['customer', 'staff'] or new_active is False):
+                active_admins = User.objects.filter(is_superuser=True, is_active=True).exclude(pk=instance.pk).count()
+                if active_admins < 1:
+                    raise serializers.ValidationError('Không thể hạ quyền hoặc khóa Quản trị viên duy nhất của hệ thống!')
+        return attrs
 
     def update(self, instance, validated_data):
         role = validated_data.pop('role', None)

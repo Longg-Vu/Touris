@@ -34,7 +34,10 @@ class ReviewViewSet(viewsets.ModelViewSet):
         qs = Review.objects.select_related('user', 'tour').order_by('-created_at')
         tour_id = self.request.query_params.get('tour')
         if tour_id:
-            qs = qs.filter(tour_id=tour_id)
+            if str(tour_id).isdigit():
+                qs = qs.filter(tour_id=int(tour_id))
+            else:
+                return qs.none()
         return qs
 
     def perform_destroy(self, instance):
@@ -55,8 +58,8 @@ class ReviewViewSet(viewsets.ModelViewSet):
         - Đã từng đặt và hoàn thành tour này chưa?
         """
         tour_id = request.query_params.get('tour')
-        if not tour_id:
-            return Response({'error': 'Thiếu tham số tour'}, status=400)
+        if not tour_id or not str(tour_id).isdigit():
+            return Response({'error': 'Tham số tour không hợp lệ'}, status=400)
 
         user = request.user
         if not user or not user.is_authenticated:
@@ -87,10 +90,15 @@ class ReviewViewSet(viewsets.ModelViewSet):
                 'message': 'Bạn có thể gửi đánh giá thử nghiệm.',
             })
 
+        from django.utils import timezone
+        from django.db.models import Q
+        today = timezone.localdate()
         has_booked = Booking.objects.filter(
             user=user,
             tour_id=tour_id,
-            status__in=[Booking.STATUS_CONFIRMED, Booking.STATUS_COMPLETED]
+        ).filter(
+            Q(status=Booking.STATUS_COMPLETED)
+            | Q(status=Booking.STATUS_CONFIRMED, travel_date__lte=today)
         ).exists()
 
         if has_booked:

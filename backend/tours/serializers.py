@@ -53,7 +53,7 @@ class TourListSerializer(serializers.ModelSerializer):
     sale_price = serializers.SerializerMethodField(read_only=True)
 
     def get_sale_price(self, obj):
-        if obj.is_priority_sale and (obj.sale_percent or 0) > 0:
+        if (obj.is_priority_sale or (obj.sale_percent or 0) > 0) and (obj.sale_percent or 0) > 0:
             return round(float(obj.price_adult) * (100 - obj.sale_percent) / 100)
         return float(obj.price_adult)
 
@@ -90,11 +90,22 @@ class TourDetailSerializer(serializers.ModelSerializer):
     rating = serializers.DecimalField(max_digits=3, decimal_places=1)
     guide = serializers.SerializerMethodField(read_only=True)
     sale_price = serializers.SerializerMethodField(read_only=True)
+    current_booked_guests = serializers.SerializerMethodField(read_only=True)
+    remaining_seats = serializers.SerializerMethodField(read_only=True)
 
     def get_sale_price(self, obj):
-        if obj.is_priority_sale and (obj.sale_percent or 0) > 0:
+        if (obj.is_priority_sale or (obj.sale_percent or 0) > 0) and (obj.sale_percent or 0) > 0:
             return round(float(obj.price_adult) * (100 - obj.sale_percent) / 100)
         return float(obj.price_adult)
+
+    def get_current_booked_guests(self, obj):
+        active_bookings = obj.bookings.exclude(status='cancelled')
+        return sum(b.num_adults + b.num_children for b in active_bookings)
+
+    def get_remaining_seats(self, obj):
+        target = obj.target_participants or 20
+        booked = self.get_current_booked_guests(obj)
+        return max(0, target - booked)
 
     def get_guide(self, obj):
         if not obj.guide:
@@ -121,6 +132,9 @@ class TourDetailSerializer(serializers.ModelSerializer):
             'rating',
             'review_count',
             'booked_count',
+            'target_participants',
+            'current_booked_guests',
+            'remaining_seats',
             'tags',
             'highlights',
             'itinerary',
@@ -156,7 +170,7 @@ class AdminTourSerializer(serializers.ModelSerializer):
     sale_price              = serializers.SerializerMethodField(read_only=True)
 
     def get_sale_price(self, obj):
-        if obj.is_priority_sale and (obj.sale_percent or 0) > 0:
+        if (obj.is_priority_sale or (obj.sale_percent or 0) > 0) and (obj.sale_percent or 0) > 0:
             return round(float(obj.price_adult) * (100 - obj.sale_percent) / 100)
         return float(obj.price_adult)
 
@@ -200,6 +214,38 @@ class AdminTourSerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = ['id', 'rating', 'review_count', 'created_at', 'updated_at']
+
+    def validate_price_adult(self, value):
+        if value is not None and value <= 0:
+            raise serializers.ValidationError('Giá vé người lớn phải lớn hơn 0.')
+        return value
+
+    def validate_sale_percent(self, value):
+        if value is not None and (value < 0 or value > 90):
+            raise serializers.ValidationError('Phần trăm giảm giá phải nằm trong khoảng từ 0% đến 90%.')
+        return value
+
+    def validate_target_participants(self, value):
+        if value is not None and value < 1:
+            raise serializers.ValidationError('Chỉ tiêu số khách của tour phải từ 1 trở lên.')
+        return value
+
+    def validate_booked_count(self, value):
+        val = str(value or '0').strip()
+        if val.startswith('-'):
+            raise serializers.ValidationError('Số lượt đặt không được là số âm.')
+        return val
+
+    def validate(self, attrs):
+        sale_pct = attrs.get('sale_percent')
+        if sale_pct is not None:
+            if sale_pct > 0:
+                attrs['is_priority_sale'] = True
+                if not attrs.get('promo'):
+                    attrs['promo'] = f'Giảm {sale_pct}%'
+            elif sale_pct == 0 and 'is_priority_sale' not in attrs:
+                attrs['is_priority_sale'] = False
+        return attrs
 
     def get_guide_name(self, obj):
         if not obj.guide:

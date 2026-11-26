@@ -94,6 +94,9 @@ class GoogleLoginView(APIView):
                 clock_skew_in_seconds=10,
             )
 
+            if not id_info.get('email_verified', True):
+                return Response({'error': 'Email Google này chưa được xác minh.'}, status=400)
+
             email      = id_info.get('email', '').strip().lower()
             first_name = id_info.get('given_name', '').strip()
             last_name  = id_info.get('family_name', '').strip()
@@ -113,7 +116,8 @@ class GoogleLoginView(APIView):
                         status=status.HTTP_403_FORBIDDEN
                     )
                 update_fields = []
-                if avatar and user.avatar != avatar:
+                # Chỉ gán ảnh Google khi tài khoản chưa có avatar để không ghi đè ảnh người dùng tự tải lên
+                if avatar and not user.avatar:
                     user.avatar = avatar
                     update_fields.append('avatar')
                 if first_name and not user.first_name:
@@ -172,11 +176,13 @@ class ChangePasswordView(APIView):
         serializer.is_valid(raise_exception=True)
 
         user = request.user
-        if not user.check_password(serializer.validated_data['old_password']):
-            return Response(
-                {'old_password': 'Mật khẩu hiện tại không đúng.'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        if user.has_usable_password():
+            old_pw = serializer.validated_data.get('old_password', '')
+            if not user.check_password(old_pw):
+                return Response(
+                    {'old_password': 'Mật khẩu hiện tại không đúng.'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
         user.set_password(serializer.validated_data['new_password'])
         user.save(update_fields=['password'])

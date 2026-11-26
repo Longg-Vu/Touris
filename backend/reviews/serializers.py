@@ -56,9 +56,12 @@ class ReviewSerializer(serializers.ModelSerializer):
         val = value.strip()
         if len(val) < 5:
             raise serializers.ValidationError('Nội dung nhận xét tối thiểu từ 5 ký tự.')
+        if len(val) > 2000:
+            raise serializers.ValidationError('Nội dung nhận xét tối đa 2000 ký tự.')
         return val
 
     def validate(self, attrs):
+        from django.utils import timezone
         request = self.context.get('request')
         if not request or not request.user or not request.user.is_authenticated:
             raise serializers.ValidationError('Bạn cần đăng nhập để gửi đánh giá.')
@@ -74,18 +77,21 @@ class ReviewSerializer(serializers.ModelSerializer):
                     'detail': 'Bạn đã đánh giá tour này rồi. Mỗi khách hàng chỉ được gửi 1 đánh giá cho mỗi tour.'
                 })
 
-            # Kiểm tra xem user đã từng đặt tour này chưa (status: confirmed hoặc completed)
-            # Cho phép Admin / Staff kiểm thử linh hoạt
+            # Kiểm tra user đã hoàn thành tour (hoặc đơn đã xác nhận và tới ngày khởi hành)
             if not (user.is_staff or user.is_superuser):
+                from django.db.models import Q
+                today = timezone.localdate()
                 has_booked = Booking.objects.filter(
                     user=user,
                     tour=tour,
-                    status__in=[Booking.STATUS_CONFIRMED, Booking.STATUS_COMPLETED]
+                ).filter(
+                    Q(status=Booking.STATUS_COMPLETED)
+                    | Q(status=Booking.STATUS_CONFIRMED, travel_date__lte=today)
                 ).exists()
 
                 if not has_booked:
                     raise serializers.ValidationError({
-                        'detail': 'Bạn chỉ có thể gửi đánh giá sau khi đã đặt và tham gia tour này.'
+                        'detail': 'Bạn chỉ có thể gửi đánh giá sau khi đã tham gia và hoàn thành chuyến đi này.'
                     })
 
         return attrs

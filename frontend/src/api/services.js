@@ -37,6 +37,13 @@ export const adminTourAPI = {
   create: (data) => api.post('/tours/admin/tours/', data),
   update: (id, data) => api.patch(`/tours/admin/tours/${id}/`, data),
   delete: (id) => api.delete(`/tours/admin/tours/${id}/`),
+  uploadImage: (file) => {
+    const formData = new FormData();
+    formData.append('image', file);
+    return api.post('/tours/admin/tours/upload-image/', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+  },
   toggleActive: (id) => api.post(`/tours/admin/tours/${id}/toggle/`),
   toggleFeatured: (id) => api.post(`/tours/admin/tours/${id}/toggle-featured/`),
   toggleHot: (id) => api.post(`/tours/admin/tours/${id}/toggle-hot/`),
@@ -72,7 +79,7 @@ export const bookingAPI = {
   getAll: (params) => api.get('/bookings/bookings/', { params }),
   getById: (id) => api.get(`/bookings/bookings/${id}/`),
   create: (data) => api.post('/bookings/bookings/', data),
-  cancel: (id) => api.post(`/bookings/bookings/${id}/cancel/`),
+  cancel: (id, data = {}) => api.post(`/bookings/bookings/${id}/cancel/`, data),
   pay: (id, method) => api.post(`/bookings/bookings/${id}/pay/`, { method }),
   lookup: (params) => api.get('/bookings/bookings/lookup/', { params }),
 };

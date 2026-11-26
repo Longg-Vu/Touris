@@ -34,9 +34,12 @@ export default function MyBookingsPage() {
   const [paySuccessMsg, setPaySuccessMsg]     = useState('');
 
   useEffect(() => {
-    setLoading(true);
+    try {
+      localStorage.removeItem('guest_bookings');
+    } catch {}
     setError(null);
     if (user) {
+      setLoading(true);
       bookingAPI.getAll()
         .then(res => {
           const data = res.data?.results ?? res.data ?? [];
@@ -45,13 +48,7 @@ export default function MyBookingsPage() {
         .catch(() => setError('Không thể tải lịch sử đặt tour.'))
         .finally(() => setLoading(false));
     } else {
-      // Khách vãng lai: Tự động tải các đơn đã lưu trên trình duyệt từ localStorage
-      try {
-        const local = JSON.parse(localStorage.getItem('guest_bookings') || '[]');
-        setBookings(Array.isArray(local) ? local : []);
-      } catch {
-        setBookings([]);
-      }
+      setBookings([]);
       setLoading(false);
     }
   }, [user]);
@@ -87,20 +84,33 @@ export default function MyBookingsPage() {
     }
   };
 
-  // Huỷ booking
-  const handleCancel = async (id) => {
-    if (!window.confirm('Bạn có chắc muốn huỷ booking này?')) return;
+  // Huỷ booking (Hỗ trợ cả khách đã đăng nhập & khách vãng lai, áp dụng chính sách trước 24h)
+  const handleCancel = async (booking) => {
+    const id = booking.id;
+    const isPaid = booking.status === 'confirmed';
+    const confirmMsg = isPaid
+      ? `Đơn #${id} đã được thanh toán (${fmt(booking.total_price)}).\nNếu huỷ trước giờ khởi hành ít nhất 24h, bạn sẽ được ghi nhận hoàn tiền 100%.\n\nBạn có chắc chắn muốn huỷ đơn này không?`
+      : `Bạn có chắc chắn muốn huỷ đơn đặt tour #${id} không?`;
+    if (!window.confirm(confirmMsg)) return;
+
     setCancelId(id);
     try {
-      const res = await bookingAPI.cancel(id);
+      const res = await bookingAPI.cancel(id, {
+        booking_code: booking.booking_code || '',
+        contact_phone: booking.contact_phone || '',
+      });
       setBookings(prev => prev.map(b => b.id === id ? res.data : b));
       // Cập nhật cả localStorage nếu là khách vãng lai
       try {
         const local = JSON.parse(localStorage.getItem('guest_bookings') || '[]');
-        localStorage.setItem('guest_bookings', JSON.stringify(local.map(b => b.id === id ? { ...b, status: 'cancelled' } : b)));
+        localStorage.setItem('guest_bookings', JSON.stringify(local.map(b => b.id === id ? res.data : b)));
       } catch {}
-    } catch {
-      alert('Huỷ thất bại. Vui lòng thử lại.');
+      if (isPaid) {
+        alert('✅ Đã huỷ đơn thành công! Hệ thống đã ghi nhận yêu cầu hoàn tiền 100% và gửi email xác nhận cho bạn.');
+      }
+    } catch (err) {
+      const detail = err.response?.data?.detail || 'Huỷ đơn thất bại. Vui lòng thử lại.';
+      alert(`⚠️ ${detail}`);
     } finally {
       setCancelId(null);
     }
@@ -157,25 +167,28 @@ export default function MyBookingsPage() {
       </div>
 
       <div className="mb-content">
-        {/* Khung tra cứu & Đồng bộ dành cho khách vãng lai */}
-        {!user && (
+        {/* Yêu cầu đăng nhập nếu chưa đăng nhập */}
+        {!user ? (
           <div className="mb-guest-box" style={{
             background: '#ffffff',
             border: '1.5px solid #e0e7ff',
-            borderRadius: 14,
-            padding: '20px 24px',
-            marginBottom: 24,
-            boxShadow: '0 4px 12px rgba(99, 102, 241, 0.06)'
+            borderRadius: 16,
+            padding: '40px 28px',
+            textAlign: 'center',
+            maxWidth: 640,
+            margin: '16px auto 32px',
+            boxShadow: '0 8px 24px rgba(15, 23, 42, 0.06)'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginBottom: 16 }}>
-              <div>
-                <h3 style={{ margin: '0 0 4px', fontSize: 17, color: '#1e1b4b', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span>🔍</span> Tra cứu đơn đặt tour (Khách vãng lai)
-                </h3>
-                <p style={{ margin: 0, fontSize: 13, color: '#64748b' }}>
-                  Hiển thị các đơn đặt tour đã lưu trên máy này. Nhập Số điện thoại hoặc Mã đơn để tra cứu thêm.
-                </p>
-              </div>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+            <h2 style={{ margin: '0 0 10px', fontSize: 21, color: '#0f172a', fontWeight: 800 }}>
+              Đăng nhập để xem & quản lý đơn đặt tour
+            </h2>
+            <p style={{ margin: '0 auto 22px', fontSize: 14.5, color: '#475569', lineHeight: 1.65, maxWidth: 520 }}>
+              Để bảo mật thông tin cá nhân và vé điện tử, mỗi tài khoản có danh sách đơn đặt riêng biệt.
+              <br />
+              💡 <strong>Nếu bạn vừa đặt tour không cần đăng nhập (Khách vãng lai):</strong> Hệ thống đã tự động kích hoạt tài khoản và gửi <strong>Tên đăng nhập / Email + Mật khẩu (123456)</strong> vào hộp thư Email của bạn!
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
               <button
                 type="button"
                 onClick={() => openAuthModal && openAuthModal('login')}
@@ -183,61 +196,35 @@ export default function MyBookingsPage() {
                   background: '#4f46e5',
                   color: '#ffffff',
                   border: 'none',
-                  borderRadius: 8,
-                  padding: '9px 18px',
-                  fontSize: 13,
-                  fontWeight: 600,
+                  borderRadius: 10,
+                  padding: '11px 24px',
+                  fontSize: 14.5,
+                  fontWeight: 700,
                   cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
+                  boxShadow: '0 4px 14px rgba(79, 70, 229, 0.35)'
                 }}
               >
-                <span>🔑</span> Đăng nhập để đồng bộ tài khoản
+                🔑 Đăng nhập ngay
               </button>
+              <Link
+                to="/tours"
+                style={{
+                  background: '#f8fafc',
+                  color: '#334155',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: 10,
+                  padding: '11px 20px',
+                  fontSize: 14.5,
+                  fontWeight: 600,
+                  textDecoration: 'none'
+                }}
+              >
+                🌍 Khám phá các Tour
+              </Link>
             </div>
-
-            <form onSubmit={handleLookup} style={{ display: 'flex', gap: 10, maxWidth: 650 }}>
-              <input
-                type="text"
-                placeholder="Nhập số điện thoại liên hệ (ví dụ: 0901234567) hoặc mã đơn..."
-                value={lookupQuery}
-                onChange={(e) => setLookupQuery(e.target.value)}
-                style={{
-                  flex: 1,
-                  padding: '10px 14px',
-                  borderRadius: 8,
-                  border: '1.5px solid #cbd5e1',
-                  fontSize: 14,
-                  outline: 'none'
-                }}
-              />
-              <button
-                type="submit"
-                disabled={lookupLoading}
-                style={{
-                  background: '#0284c7',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 8,
-                  padding: '0 20px',
-                  fontSize: 14,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  whiteSpace: 'nowrap'
-                }}
-              >
-                {lookupLoading ? 'Đang tìm...' : '🔍 Tra cứu đơn'}
-              </button>
-            </form>
-            {lookupError && (
-              <div style={{ color: '#ef4444', fontSize: 13, marginTop: 10, fontWeight: 500 }}>
-                ⚠️ {lookupError}
-              </div>
-            )}
           </div>
-        )}
-
+        ) : (
+          <>
         {/* Filter tabs */}
         <div className="mb-tabs">
           {[
@@ -390,7 +377,7 @@ export default function MyBookingsPage() {
                     {(booking.status === 'pending' || booking.status === 'confirmed') && (
                       <button
                         className="mb-btn-cancel"
-                        onClick={() => handleCancel(booking.id)}
+                        onClick={() => handleCancel(booking)}
                         disabled={cancelId === booking.id}
                       >
                         {cancelId === booking.id ? 'Đang huỷ…' : 'Huỷ booking'}
@@ -409,6 +396,8 @@ export default function MyBookingsPage() {
             <p>Muốn khám phá thêm điểm đến mới?</p>
             <Link to="/tours" className="mb-btn-primary">Đặt tour mới</Link>
           </div>
+        )}
+          </>
         )}
       </div>
 
